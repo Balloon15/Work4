@@ -1,12 +1,11 @@
 import pandas as pd
 import streamlit as st
 import matplotlib.pyplot as plt
-from google.colab import drive
-drive.mount('/content/drive')
+
 # Загрузка данных
 @st.cache
 def load_data():
-    data = pd.read_csv( '/content/drive/MyDrive/nyc-rolling-sales.csv')
+    data = pd.read_csv( 'nyc-rolling-sales.csv')
     return data
 
 # Очистка данных
