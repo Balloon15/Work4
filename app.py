@@ -2,6 +2,7 @@ import pandas as pd
 import streamlit as st
 import matplotlib.pyplot as plt
 import seaborn as sns
+import plotly.express as px
 
 # Загрузка данных
 @st.cache
@@ -19,10 +20,6 @@ def clean_data(df):
     # Удаление строк с пропусками
     df.dropna(inplace=True)
     
-    # Проверка типов данных
-    st.write("Типы данных после очистки:")
-    st.write(df.dtypes)
-    
     return df
 
 # Основной код приложения
@@ -31,7 +28,7 @@ data = clean_data(data)
 
 # Навигация
 st.sidebar.title('Навигация')
-page = st.sidebar.radio('Выберите страницу:', ['Корреляционная матрица', 'Гистограммы', 'Box Plots', 'Bar Charts'])
+page = st.sidebar.radio('Выберите страницу:', ['Корреляционная матрица', 'Гистограммы', 'Box Plots', 'Bar Charts', 'Scatter Plots', 'Pie Charts'])
 
 if page == 'Корреляционная матрица':
     st.title('Корреляционная матрица')
@@ -86,6 +83,32 @@ elif page == 'Bar Charts':
                      color=selected_categorical, 
                      text_auto=True)
     st.plotly_chart(fig_bar)
+
+elif page == 'Scatter Plots':
+    st.title('Scatter Plots для пар признаков')
+    
+    # Выбор пар числовых признаков
+    selected_x = st.selectbox('Выберите признак по оси X:', numeric_columns)
+    selected_y = st.selectbox('Выберите признак по оси Y:', numeric_columns)
+    
+    # Scatter Plot
+    st.subheader(f'Scatter Plot: {selected_x} vs {selected_y}')
+    fig_scatter = px.scatter(data, x=selected_x, y=selected_y, title=f'Scatter Plot: {selected_x} vs {selected_y}')
+    st.plotly_chart(fig_scatter)
+
+elif page == 'Pie Charts':
+    st.title('Pie Charts для пропорций категорий')
+    
+    # Выбор категориального признака
+    selected_categorical = st.selectbox('Выберите категориальный признак:', categorical_columns)
+    
+    # Подсчет пропорций
+    counts = data[selected_categorical].value_counts()
+    
+    # Pie Chart
+    st.subheader(f'Pie Chart для {selected_categorical}')
+    fig_pie = px.pie(counts, values=counts.values, names=counts.index, title=f'Pie Chart для {selected_categorical}')
+    st.plotly_chart(fig_pie)
 
 # Запуск приложения
 if __name__ == '__main__':
