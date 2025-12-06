@@ -17,6 +17,9 @@ def clean_data(df):
     df['LAND SQUARE FEET'] = pd.to_numeric(df['LAND SQUARE FEET'].str.replace(',', '').str.strip(), errors='coerce')
     df['GROSS SQUARE FEET'] = pd.to_numeric(df['GROSS SQUARE FEET'].str.replace(',', '').str.strip(), errors='coerce')
     
+    # Преобразование SALE DATE в datetime
+    df['SALE DATE'] = pd.to_datetime(df['SALE DATE'], errors='coerce')
+    
     # Удаление строк с пропусками
     df.dropna(inplace=True)
     
@@ -32,9 +35,34 @@ categorical_columns = data.select_dtypes(include=['object']).columns.tolist()
 
 # Навигация
 st.sidebar.title('Навигация')
-page = st.sidebar.radio('Выберите страницу:', ['Корреляционная матрица', 'Гистограммы', 'Box Plots', 'Bar Charts', 'Scatter Plots', 'Pie Charts'])
+page = st.sidebar.radio('Выберите страницу:', ['Корреляционная матрица', 'Гистограммы', 'Box Plots', 'Bar Charts', 'Scatter Plots', 'Pie Charts', 'Фильтры'])
 
-if page == 'Корреляционная матрица':
+# Фильтры
+if page == 'Фильтры':
+    st.title('Фильтры для данных')
+
+    # Dropdown для выбора колонки
+    selected_column = st.selectbox('Выберите колонку:', numeric_columns + categorical_columns)
+
+    # Sliders для диапазонов значений (только для числовых колонок)
+    if selected_column in numeric_columns:
+        min_value = float(data[selected_column].min())
+        max_value = float(data[selected_column].max())
+        range_values = st.slider('Выберите диапазон значений:', min_value, max_value, (min_value, max_value))
+        filtered_data = data[(data[selected_column] >= range_values[0]) & (data[selected_column] <= range_values[1])]
+    else:
+        filtered_data = data
+
+    # Date pickers для временных данных
+    if selected_column == 'SALE DATE':
+        start_date = st.date_input('Выберите начальную дату:', data['SALE DATE'].min().date())
+        end_date = st.date_input('Выберите конечную дату:', data['SALE DATE'].max().date())
+        filtered_data = filtered_data[(filtered_data['SALE DATE'] >= pd.to_datetime(start_date)) & (filtered_data['SALE DATE'] <= pd.to_datetime(end_date))]
+
+    st.subheader('Отфильтрованные данные:')
+    st.write(filtered_data)
+
+elif page == 'Корреляционная матрица':
     st.title('Корреляционная матрица')
     
     # Удаление нечисловых столбцов
