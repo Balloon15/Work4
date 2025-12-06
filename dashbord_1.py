@@ -22,10 +22,9 @@ data = clean_data(data)
 
 # Навигация
 st.sidebar.title('Навигация')
-page = st.sidebar.radio('Выберите страницу:', ['Обзор', 'Статистика', 'Визуализации'])
+page = st.sidebar.radio('Выберите страницу:', ['Визуализация исходных данных', 'Результаты анализа'])
 
-if page == 'Обзор':
-    st.title('Обзор датасета')
+if page == 'Визуализация исходных данных':
     st.write('Первые строки данных:')
     st.dataframe(data.head())
 
@@ -33,7 +32,6 @@ if page == 'Обзор':
     st.write('Количество пропусков по колонкам:')
     st.write(data.isnull().sum())
 
-elif page == 'Статистика':
     st.title('Базовые статистики')
     
     # Статистики
@@ -43,7 +41,6 @@ elif page == 'Статистика':
     st.metric(label="Медиана цены продажи", value=data['SALE PRICE'].median())
     st.metric(label="Стандартное отклонение цены продажи", value=data['SALE PRICE'].std())
 
-elif page == 'Визуализации':
     st.title('Визуализации данных')
 
     # Выбор признака для визуализации
