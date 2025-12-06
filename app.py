@@ -2,7 +2,6 @@ import pandas as pd
 import streamlit as st
 import matplotlib.pyplot as plt
 import seaborn as sns
-import plotly.express as px
 
 # Загрузка данных
 @st.cache
@@ -24,16 +23,27 @@ data = clean_data(data)
 
 # Навигация
 st.sidebar.title('Навигация')
-page = st.sidebar.radio('Выберите страницу:', ['Гистограммы', 'Box Plots', 'Bar Charts'])
+page = st.sidebar.radio('Выберите страницу:', ['Корреляционная матрица', 'Гистограммы', 'Box Plots', 'Bar Charts'])
 
-# Определение числовых и категориальных признаков
-numeric_columns = data.select_dtypes(include=['float64', 'int64']).columns.tolist()
-categorical_columns = data.select_dtypes(include=['object']).columns.tolist()
+if page == 'Корреляционная матрица':
+    st.title('Корреляционная матрица')
+    
+    # Вычисление корреляционной матрицы
+    corr = data.corr()
+    
+    # Настройка визуализации
+    plt.figure(figsize=(10, 8))
+    sns.heatmap(corr, annot=True, fmt=".2f", cmap='coolwarm', square=True, cbar_kws={"shrink": .8})
+    plt.title('Корреляционная матрица')
 
-if page == 'Гистограммы':
+    # Отображение heatmap в Streamlit
+    st.pyplot(plt)
+
+elif page == 'Гистограммы':
     st.title('Гистограммы для числовых переменных')
     
     # Выбор числового признака
+    numeric_columns = data.select_dtypes(include=['float64', 'int64']).columns.tolist()
     selected_numeric = st.selectbox('Выберите числовой признак:', numeric_columns)
     
     # Гистограмма
@@ -56,6 +66,7 @@ elif page == 'Bar Charts':
     st.title('Bar Charts для категориальных переменных')
     
     # Выбор категориального признака
+    categorical_columns = data.select_dtypes(include=['object']).columns.tolist()
     selected_categorical = st.selectbox('Выберите категориальный признак:', categorical_columns)
     
     # Bar Chart
