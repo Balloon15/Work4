@@ -11,10 +11,18 @@ def load_data():
 
 # Очистка данных
 def clean_data(df):
+    # Преобразование столбцов в числовой формат
     df['SALE PRICE'] = pd.to_numeric(df['SALE PRICE'].str.replace(',', '').str.strip(), errors='coerce')
     df['LAND SQUARE FEET'] = pd.to_numeric(df['LAND SQUARE FEET'].str.replace(',', '').str.strip(), errors='coerce')
     df['GROSS SQUARE FEET'] = pd.to_numeric(df['GROSS SQUARE FEET'].str.replace(',', '').str.strip(), errors='coerce')
+    
+    # Удаление строк с пропусками
     df.dropna(inplace=True)
+    
+    # Проверка типов данных
+    st.write("Типы данных после очистки:")
+    st.write(df.dtypes)
+    
     return df
 
 # Основной код приложения
