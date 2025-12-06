@@ -36,8 +36,11 @@ page = st.sidebar.radio('Выберите страницу:', ['Корреляц
 if page == 'Корреляционная матрица':
     st.title('Корреляционная матрица')
     
+    # Удаление нечисловых столбцов
+    numeric_data = data.select_dtypes(include=['float64', 'int64'])
+    
     # Вычисление корреляционной матрицы
-    corr = data.corr()
+    corr = numeric_data.corr()
     
     # Настройка визуализации
     plt.figure(figsize=(10, 8))
