@@ -26,11 +26,14 @@ data = clean_data(data)
 st.sidebar.title('Навигация')
 page = st.sidebar.radio('Выберите страницу:', ['Гистограммы', 'Box Plots', 'Bar Charts'])
 
+# Определение числовых и категориальных признаков
+numeric_columns = data.select_dtypes(include=['float64', 'int64']).columns.tolist()
+categorical_columns = data.select_dtypes(include=['object']).columns.tolist()
+
 if page == 'Гистограммы':
     st.title('Гистограммы для числовых переменных')
     
     # Выбор числового признака
-    numeric_columns = data.select_dtypes(include=['float64', 'int64']).columns.tolist()
     selected_numeric = st.selectbox('Выберите числовой признак:', numeric_columns)
     
     # Гистограмма
@@ -53,7 +56,6 @@ elif page == 'Bar Charts':
     st.title('Bar Charts для категориальных переменных')
     
     # Выбор категориального признака
-    categorical_columns = data.select_dtypes(include=['object']).columns.tolist()
     selected_categorical = st.selectbox('Выберите категориальный признак:', categorical_columns)
     
     # Bar Chart
