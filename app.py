@@ -1,6 +1,8 @@
 import pandas as pd
 import streamlit as st
-from st_aggrid import AgGrid, GridOptionsBuilder
+import matplotlib.pyplot as plt
+import seaborn as sns
+import plotly.express as px
 
 # Загрузка данных
 @st.cache
@@ -11,6 +13,8 @@ def load_data():
 # Очистка данных
 def clean_data(df):
     df['SALE PRICE'] = pd.to_numeric(df['SALE PRICE'].str.replace(',', '').str.strip(), errors='coerce')
+    df['LAND SQUARE FEET'] = pd.to_numeric(df['LAND SQUARE FEET'].str.replace(',', '').str.strip(), errors='coerce')
+    df['GROSS SQUARE FEET'] = pd.to_numeric(df['GROSS SQUARE FEET'].str.replace(',', '').str.strip(), errors='coerce')
     df.dropna(inplace=True)
     return df
 
@@ -20,24 +24,44 @@ data = clean_data(data)
 
 # Навигация
 st.sidebar.title('Навигация')
-page = st.sidebar.radio('Выберите страницу:', ['Обзор', 'Таблица данных'])
+page = st.sidebar.radio('Выберите страницу:', ['Гистограммы', 'Box Plots', 'Bar Charts'])
 
-if page == 'Обзор':
-    st.title('Обзор датасета')
-    st.write('Первые строки данных:')
-    st.dataframe(data.head())
+if page == 'Гистограммы':
+    st.title('Гистограммы для числовых переменных')
+    
+    # Выбор числового признака
+    numeric_columns = data.select_dtypes(include=['float64', 'int64']).columns.tolist()
+    selected_numeric = st.selectbox('Выберите числовой признак:', numeric_columns)
+    
+    # Гистограмма
+    st.subheader(f'Гистограмма для {selected_numeric}')
+    fig_hist = px.histogram(data, x=selected_numeric, title=f'Гистограмма {selected_numeric}')
+    st.plotly_chart(fig_hist)
 
-elif page == 'Таблица данных':
-    st.title('Интерактивная таблица данных')
+elif page == 'Box Plots':
+    st.title('Box Plots для числовых переменных')
+    
+    # Выбор числового признака
+    selected_numeric = st.selectbox('Выберите числовой признак для Box Plot:', numeric_columns)
+    
+    # Box Plot
+    st.subheader(f'Box Plot для {selected_numeric}')
+    fig_box = px.box(data, y=selected_numeric, title=f'Box Plot {selected_numeric}')
+    st.plotly_chart(fig_box)
 
-    # Создание конфигурации для таблицы
-    gb = GridOptionsBuilder.from_dataframe(data)
-    gb.configure_pagination(paginationPageSize=10)  # Пагинация
-    gb.configure_default_column(editable=False, groupable=True)  # Настройки столбцов
-    grid_options = gb.build()
-
-    # Отображение таблицы
-    AgGrid(data, gridOptions=grid_options, enable_enterprise_modules=True, allow_unsafe_jscode=True)
+elif page == 'Bar Charts':
+    st.title('Bar Charts для категориальных переменных')
+    
+    # Выбор категориального признака
+    categorical_columns = data.select_dtypes(include=['object']).columns.tolist()
+    selected_categorical = st.selectbox('Выберите категориальный признак:', categorical_columns)
+    
+    # Bar Chart
+    st.subheader(f'Bar Chart для {selected_categorical}')
+    fig_bar = px.bar(data, x=selected_categorical, title=f'Bar Chart {selected_categorical}', 
+                     color=selected_categorical, 
+                     text_auto=True)
+    st.plotly_chart(fig_bar)
 
 # Запуск приложения
 if __name__ == '__main__':
