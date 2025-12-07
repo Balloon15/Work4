@@ -2,9 +2,7 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
-import plotly.express as px
 from sklearn.cluster import KMeans
-from sklearn.linear_model import LinearRegression
 from sklearn.metrics import confusion_matrix, roc_curve, auc
 from sklearn.model_selection import train_test_split
 from sklearn.ensemble import RandomForestClassifier
@@ -18,8 +16,10 @@ def load_data():
 
 # Функция для очистки данных
 def clean_data(df):
-    # Преобразование SALE PRICE в числовой формат
+    # Преобразование SALE PRICE, LAND SQUARE FEET и GROSS SQUARE FEET в числовой формат
     df['SALE PRICE'] = pd.to_numeric(df['SALE PRICE'].str.replace(',', '').str.strip(), errors='coerce')
+    df['LAND SQUARE FEET'] = pd.to_numeric(df['LAND SQUARE FEET'].str.replace(',', '').str.strip(), errors='coerce')
+    df['GROSS SQUARE FEET'] = pd.to_numeric(df['GROSS SQUARE FEET'].str.replace(',', '').str.strip(), errors='coerce')
     df['SALE DATE'] = pd.to_datetime(df['SALE DATE'], errors='coerce')
     df.dropna(inplace=True)
     return df
@@ -72,6 +72,11 @@ def plot_classification(df):
     # Проверка на наличие пропусков
     if X.isnull().any().any() or y.isnull().any():
         st.warning("В данных есть пропуски. Пожалуйста, проверьте данные.")
+        return
+
+    # Проверка типов данных
+    if not np.issubdtype(X.dtypes, np.number).all() or not np.issubdtype(y.dtype, np.number):
+        st.warning("Все признаки должны быть числовыми.")
         return
 
     # Разделение на обучающую и тестовую выборки
