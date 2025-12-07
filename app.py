@@ -1,180 +1,107 @@
 import pandas as pd
-import streamlit as st
+import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 import plotly.express as px
-from st_aggrid import AgGrid, GridOptionsBuilder  # Импорт необходимых компонентов для AgGrid
+from sklearn.datasets import make_blobs, make_classification
+from sklearn.cluster import KMeans
+from sklearn.linear_model import LinearRegression
+from sklearn.metrics import confusion_matrix, roc_curve, auc
+from sklearn.model_selection import train_test_split
+from sklearn.ensemble import RandomForestClassifier
+import streamlit as st
 
-# Загрузка данных
-@st.cache
-def load_data():
-    data = pd.read_csv('nyc-rolling-sales.csv')
-    return data
+# Функция для генерации данных для кластеризации
+def generate_cluster_data():
+    X, y = make_blobs(n_samples=300, centers=4, cluster_std=0.60, random_state=0)
+    return X, y
 
-# Очистка данных
-def clean_data(df):
-    # Преобразование столбцов в числовой формат
-    df['SALE PRICE'] = pd.to_numeric(df['SALE PRICE'].str.replace(',', '').str.strip(), errors='coerce')
-    df['LAND SQUARE FEET'] = pd.to_numeric(df['LAND SQUARE FEET'].str.replace(',', '').str.strip(), errors='coerce')
-    df['GROSS SQUARE FEET'] = pd.to_numeric(df['GROSS SQUARE FEET'].str.replace(',', '').str.strip(), errors='coerce')
-    
-    # Преобразование SALE DATE в datetime
-    df['SALE DATE'] = pd.to_datetime(df['SALE DATE'], errors='coerce')
-    
-    # Удаление строк с пропусками
-    df.dropna(inplace=True)
-    
-    return df
+# Функция для кластеризации и построения графика
+def plot_clusters(X, y):
+    kmeans = KMeans(n_clusters=4)
+    y_kmeans = kmeans.fit_predict(X)
+
+    plt.figure(figsize=(10, 6))
+    plt.scatter(X[:, 0], X[:, 1], c=y_kmeans, s=50, cmap='viridis')
+    centers = kmeans.cluster_centers_
+    plt.scatter(centers[:, 0], centers[:, 1], c='red', s=200, alpha=0.75, marker='X')
+    plt.title('Кластеры с центроидами')
+    plt.xlabel('Признак 1')
+    plt.ylabel('Признак 2')
+    plt.grid()
+    st.pyplot(plt)
+
+# Функция для генерации данных временного ряда и построения графика
+def plot_time_series():
+    np.random.seed(0)
+    time = np.arange(100)
+    data = 0.5 * time + np.random.normal(size=time.shape)
+
+    X = time.reshape(-1, 1)
+    y = data
+    model = LinearRegression()
+    model.fit(X, y)
+    predictions = model.predict(X)
+
+    plt.figure(figsize=(10, 6))
+    plt.plot(time, data, label='Данные', color='blue')
+    plt.plot(time, predictions, label='Линия тренда', color='red', linestyle='--')
+    plt.title('Временной ряд с линией тренда')
+    plt.xlabel('Время')
+    plt.ylabel('Значение')
+    plt.legend()
+    plt.grid()
+    st.pyplot(plt)
+
+# Функция для генерации данных для классификации и построения confusion matrix и ROC curve
+def plot_classification():
+    X_class, y_class = make_classification(n_samples=1000, n_features=20, n_classes=2, random_state=0)
+    X_train, X_test, y_train, y_test = train_test_split(X_class, y_class, test_size=0.3, random_state=0)
+
+    clf = RandomForestClassifier()
+    clf.fit(X_train, y_train)
+    y_pred = clf.predict(X_test)
+
+    # Confusion Matrix
+    cm = confusion_matrix(y_test, y_pred)
+    plt.figure(figsize=(8, 6))
+    sns.heatmap(cm, annot=True, fmt='d', cmap='Blues')
+    plt.title('Confusion Matrix')
+    plt.xlabel('Предсказанные метки')
+    plt.ylabel('Истинные метки')
+    st.pyplot(plt)
+
+    # ROC Curve
+    fpr, tpr, thresholds = roc_curve(y_test, clf.predict_proba(X_test)[:, 1])
+    roc_auc = auc(fpr, tpr)
+
+    plt.figure(figsize=(8, 6))
+    plt.plot(fpr, tpr, color='blue', lw=2, label='ROC кривая (area = %0.2f)' % roc_auc)
+    plt.plot([0, 1], [0, 1], color='red', lw=2, linestyle='--')
+    plt.xlim([0.0, 1.0])
+    plt.ylim([0.0, 1.05])
+    plt.xlabel('Ложноположительная ставка')
+    plt.ylabel('Истинноположительная ставка')
+    plt.title('ROC Кривая')
+    plt.legend(loc="lower right")
+    st.pyplot(plt)
 
 # Основной код приложения
-data = load_data()
-data = clean_data(data)
-
-# Определение числовых и категориальных признаков
-numeric_columns = data.select_dtypes(include=['float64', 'int64']).columns.tolist()
-categorical_columns = data.select_dtypes(include=['object']).columns.tolist()
-
-# Навигация
 st.sidebar.title('Навигация')
-page = st.sidebar.radio('Страница 1:', ['Таблица с первыми строками', 'Базовые статистики', 'Гистограммы и Bar Charts', 
-                                               'Корреляционная матрица', 'Scatter Plots и Pie Charts', 'Фильтры'])
+page = st.sidebar.radio('Выберите страницу:', ['Кластеры', 'Временной ряд', 'Классификация'])
 
-page2 = st.sidebar.radio('Страница 2:', ['Графики моделей', 'Ключевые метрики', 'Интерпретация', 
-                                               'Примеры визуализаций', 'Фильтры'])
+if page == 'Кластеры':
+    st.title('Кластеры в scatter plots с центроидами')
+    X, y = generate_cluster_data()
+    plot_clusters(X, y)
 
-if page == 'Таблица с первыми строками':
-    st.title('Таблица данных')
+elif page == 'Временной ряд':
+    st.title('Линия тренда для временного ряда')
+    plot_time_series()
 
-    # Создание конфигурации для таблицы
-    gb = GridOptionsBuilder.from_dataframe(data)
-    gb.configure_pagination(paginationPageSize=10)  # Пагинация
-    gb.configure_default_column(editable=False, groupable=True)  # Настройки столбцов
-    grid_options = gb.build()
-
-    # Отображение таблицы
-    AgGrid(data, gridOptions=grid_options, enable_enterprise_modules=True, allow_unsafe_jscode=True)
-
-elif page == 'Базовые статистики':
-    st.title('Ключевые показатели эффективности (KPI)')
-
-    # Общее количество записей
-    total_records = data.shape[0]
-    st.metric(label="Общее количество записей", value=total_records)
-
-    # Пропуски по колонкам
-    missing_values = data.isnull().sum()
-    missing_values = missing_values[missing_values > 0]
-    if not missing_values.empty:
-        st.subheader('Пропуски по колонкам:')
-        st.write(missing_values)
-
-    # Базовые статистики для числовых колонок
-    st.subheader('Базовые статистики для числовых колонок:')
-    stats = data[numeric_columns].describe().T[['mean', '50%', 'std']]
-    stats.columns = ['Среднее', 'Медиана', 'Стандартное отклонение']
-    
-    # Визуализация KPI в виде карточек
-    for column in numeric_columns:
-        mean_value = stats.loc[column, 'Среднее']
-        median_value = stats.loc[column, 'Медиана']
-        std_value = stats.loc[column, 'Стандартное отклонение']
-        
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            st.metric(label=f'Среднее {column}', value=f"{mean_value:.2f}")
-        with col2:
-            st.metric(label=f'Медиана {column}', value=f"{median_value:.2f}")
-        with col3:
-            st.metric(label=f'Стандартное отклонение {column}', value=f"{std_value:.2f}")
-
-elif page == 'Гистограммы и Bar Charts':
-    st.title('Гистограммы для числовых переменных')
-    
-    # Выбор числового признака
-    selected_numeric = st.selectbox('Выберите числовой признак:', numeric_columns)
-    
-    # Гистограмма
-    st.subheader(f'Гистограмма для {selected_numeric}')
-    fig_hist = px.histogram(data, x=selected_numeric, title=f'Гистограмма {selected_numeric}')
-    st.plotly_chart(fig_hist)
-
-    st.title('Pie Charts для пропорций категорий')
-    
-    # Выбор категориального признака
-    selected_categorical = st.selectbox('Выберите категориальный признак:', categorical_columns)
-    
-    # Подсчет пропорций
-    counts = data[selected_categorical].value_counts()
-    
-    # Pie Chart
-    st.subheader(f'Pie Chart для {selected_categorical}')
-    fig_pie = px.pie(counts, values=counts.values, names=counts.index, title=f'Pie Chart для {selected_categorical}')
-    st.plotly_chart(fig_pie) 
-
-elif page == 'Корреляционная матрица':
-    st.title('Корреляционная матрица')
-    
-    # Удаление нечисловых столбцов
-    numeric_data = data.select_dtypes(include=['float64', 'int64'])
-    
-    # Вычисление корреляционной матрицы
-    corr = numeric_data.corr()
-    
-    # Настройка визуализации
-    plt.figure(figsize=(10, 8))
-    sns.heatmap(corr, annot=True, fmt=".2f", cmap='coolwarm', square=True, cbar_kws={"shrink": .8})
-    plt.title('Корреляционная матрица')
-
-    # Отображение heatmap в Streamlit
-    st.pyplot(plt)       
-
-elif page == 'Scatter Plots и Pie Charts':
-    st.title('Scatter Plots для пар признаков')
-    
-    # Выбор пар числовых признаков
-    selected_x = st.selectbox('Выберите признак по оси X:', numeric_columns)
-    selected_y = st.selectbox('Выберите признак по оси Y:', numeric_columns)
-    
-    # Scatter Plot
-    st.subheader(f'Scatter Plot: {selected_x} vs {selected_y}')
-    fig_scatter = px.scatter(data, x=selected_x, y=selected_y, title=f'Scatter Plot: {selected_x} vs {selected_y}')
-    st.plotly_chart(fig_scatter)
-
-    st.title('Bar Charts для категориальных переменных')
-    
-    # Выбор категориального признака
-    selected_categorical = st.selectbox('Выберите категориальный признак:', categorical_columns)
-    
-    # Bar Chart
-    st.subheader(f'Bar Chart для {selected_categorical}')
-    fig_bar = px.bar(data, x=selected_categorical, title=f'Bar Chart {selected_categorical}', 
-                     color=selected_categorical, 
-                     text_auto=True)
-    st.plotly_chart(fig_bar)
-
-elif page == 'Фильтры':
-    st.title('Фильтры для данных')
-
-    # Dropdown для выбора колонки
-    selected_column = st.selectbox('Выберите колонку:', numeric_columns + categorical_columns)
-
-    # Sliders для диапазонов значений (только для числовых колонок)
-    if selected_column in numeric_columns:
-        min_value = float(data[selected_column].min())
-        max_value = float(data[selected_column].max())
-        range_values = st.slider('Выберите диапазон значений:', min_value, max_value, (min_value, max_value))
-        filtered_data = data[(data[selected_column] >= range_values[0]) & (data[selected_column] <= range_values[1])]
-    else:
-        filtered_data = data
-
-    # Date pickers для временных данных
-    if selected_column == 'SALE DATE':
-        start_date = st.date_input('Выберите начальную дату:', data['SALE DATE'].min().date())
-        end_date = st.date_input('Выберите конечную дату:', data['SALE DATE'].max().date())
-        filtered_data = filtered_data[(filtered_data['SALE DATE'] >= pd.to_datetime(start_date)) & (filtered_data['SALE DATE'] <= pd.to_datetime(end_date))]
-
-    st.subheader('Отфильтрованные данные:')
-    st.write(filtered_data)
+elif page == 'Классификация':
+    st.title('Confusion Matrix и ROC кривая')
+    plot_classification()
 
 # Запуск приложения
 if __name__ == '__main__':
