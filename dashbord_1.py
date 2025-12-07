@@ -173,6 +173,3 @@ elif page == 'Фильтры':
     st.subheader('Отфильтрованные данные:')
     st.write(filtered_data)
 
-# Запуск приложения
-if __name__ == '__main__':
-    st.write("Запустите это приложение с помощью `streamlit run app.py`")
