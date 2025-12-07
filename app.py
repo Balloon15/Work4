@@ -3,7 +3,6 @@ import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 import plotly.express as px
-from sklearn.datasets import make_blobs, make_classification
 from sklearn.cluster import KMeans
 from sklearn.linear_model import LinearRegression
 from sklearn.metrics import confusion_matrix, roc_curve, auc
@@ -11,13 +10,29 @@ from sklearn.model_selection import train_test_split
 from sklearn.ensemble import RandomForestClassifier
 import streamlit as st
 
-# Функция для генерации данных для кластеризации
-def generate_cluster_data():
-    X, y = make_blobs(n_samples=300, centers=4, cluster_std=0.60, random_state=0)
-    return X, y
+# Загрузка данных
+@st.cache
+def load_data():
+    data = pd.read_csv('nyc-rolling-sales.csv')
+    return data
+
+# Функция для очистки данных
+def clean_data(df):
+    # Преобразование SALE PRICE в числовой формат
+    df['SALE PRICE'] = pd.to_numeric(df['SALE PRICE'].str.replace(',', '').str.strip(), errors='coerce')
+    df['SALE DATE'] = pd.to_datetime(df['SALE DATE'], errors='coerce')
+    df.dropna(inplace=True)
+    return df
+
+# Генерация данных для кластеризации
+def generate_cluster_data(df):
+    # Используем только числовые данные для кластеризации
+    numeric_columns = df.select_dtypes(include=['float64', 'int64']).columns.tolist()
+    X = df[numeric_columns].values
+    return X
 
 # Функция для кластеризации и построения графика
-def plot_clusters(X, y):
+def plot_clusters(X):
     kmeans = KMeans(n_clusters=4)
     y_kmeans = kmeans.fit_predict(X)
 
@@ -32,31 +47,27 @@ def plot_clusters(X, y):
     st.pyplot(plt)
 
 # Функция для генерации данных временного ряда и построения графика
-def plot_time_series():
-    np.random.seed(0)
-    time = np.arange(100)
-    data = 0.5 * time + np.random.normal(size=time.shape)
-
-    X = time.reshape(-1, 1)
-    y = data
-    model = LinearRegression()
-    model.fit(X, y)
-    predictions = model.predict(X)
+def plot_time_series(df):
+    df['YEAR'] = df['SALE DATE'].dt.year
+    df['MONTH'] = df['SALE DATE'].dt.month
+    monthly_sales = df.groupby(['YEAR', 'MONTH'])['SALE PRICE'].mean().reset_index()
 
     plt.figure(figsize=(10, 6))
-    plt.plot(time, data, label='Данные', color='blue')
-    plt.plot(time, predictions, label='Линия тренда', color='red', linestyle='--')
-    plt.title('Временной ряд с линией тренда')
-    plt.xlabel('Время')
-    plt.ylabel('Значение')
-    plt.legend()
+    plt.plot(monthly_sales['MONTH'], monthly_sales['SALE PRICE'], marker='o')
+    plt.title('Средняя цена продажи по месяцам')
+    plt.xlabel('Месяц')
+    plt.ylabel('Средняя цена продажи')
     plt.grid()
     st.pyplot(plt)
 
 # Функция для генерации данных для классификации и построения confusion matrix и ROC curve
-def plot_classification():
-    X_class, y_class = make_classification(n_samples=1000, n_features=20, n_classes=2, random_state=0)
-    X_train, X_test, y_train, y_test = train_test_split(X_class, y_class, test_size=0.3, random_state=0)
+def plot_classification(df):
+    # Пример: предсказание, будет ли цена продажи выше медианы
+    df['TARGET'] = (df['SALE PRICE'] > df['SALE PRICE'].median()).astype(int)
+    X = df[['LAND SQUARE FEET', 'GROSS SQUARE FEET']]
+    y = df['TARGET']
+    
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=0)
 
     clf = RandomForestClassifier()
     clf.fit(X_train, y_train)
@@ -90,18 +101,22 @@ def plot_classification():
 st.sidebar.title('Навигация')
 page = st.sidebar.radio('Выберите страницу:', ['Кластеры', 'Временной ряд', 'Классификация'])
 
+# Загрузка и очистка данных
+data = load_data()
+data = clean_data(data)
+
 if page == 'Кластеры':
     st.title('Кластеры в scatter plots с центроидами')
-    X, y = generate_cluster_data()
-    plot_clusters(X, y)
+    X = generate_cluster_data(data)
+    plot_clusters(X)
 
 elif page == 'Временной ряд':
-    st.title('Линия тренда для временного ряда')
-    plot_time_series()
+    st.title('Средняя цена продажи по месяцам')
+    plot_time_series(data)
 
 elif page == 'Классификация':
     st.title('Confusion Matrix и ROC кривая')
-    plot_classification()
+    plot_classification(data)
 
 # Запуск приложения
 if __name__ == '__main__':
