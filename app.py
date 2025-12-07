@@ -7,6 +7,8 @@ from sklearn.metrics import silhouette_score, confusion_matrix, roc_curve, auc, 
 from sklearn.model_selection import train_test_split
 from sklearn.ensemble import RandomForestClassifier
 import streamlit as st
+import folium
+from folium.plugins import MarkerCluster
 
 # Загрузка данных
 @st.cache
@@ -127,9 +129,34 @@ def plot_classification(df):
     r2 = r2_score(y_test, y_pred)
     st.metric("R² Score", round(r2, 2))
 
+    # Визуализация важности признаков
+    importances = clf.feature_importances_
+    feature_names = X.columns
+    feature_importance_df = pd.DataFrame({'Feature': feature_names, 'Importance': importances})
+    feature_importance_df = feature_importance_df.sort_values(by='Importance', ascending=False)
+
+    plt.figure(figsize=(10, 6))
+    sns.barplot(x='Importance', y='Feature', data=feature_importance_df)
+    plt.title('Важность признаков')
+    st.pyplot(plt)
+
+# Функция для создания интерактивной карты
+def plot_map(df):
+    # Используем только строки с ненулевыми координатами
+    df = df[df['LATITUDE'].notnull() & df['LONGITUDE'].notnull()]
+    m = folium.Map(location=[df['LATITUDE'].mean(), df['LONGITUDE'].mean()], zoom_start=12)
+
+    # Добавление маркеров на карту
+    marker_cluster = MarkerCluster().add_to(m)
+    for idx, row in df.iterrows():
+        folium.Marker(location=[row['LATITUDE'], row['LONGITUDE']],
+                      popup=f"Цена: ${row['SALE PRICE']:.2f}").add_to(marker_cluster)
+
+    st.write(m)
+
 # Основной код приложения
 st.sidebar.title('Навигация')
-page = st.sidebar.radio('Выберите страницу:', ['Кластеры', 'Временной ряд', 'Классификация'])
+page = st.sidebar.radio('Выберите страницу:', ['Кластеры', 'Временной ряд', 'Классификация', 'Карта'])
 
 # Загрузка и очистка данных
 data = load_data()
@@ -147,6 +174,10 @@ elif page == 'Временной ряд':
 elif page == 'Классификация':
     st.title('Confusion Matrix и ROC кривая')
     plot_classification(data)
+
+elif page == 'Карта':
+    st.title('Интерактивная карта продаж')
+    plot_map(data)
 
 # Запуск приложения
 if __name__ == '__main__':
