@@ -5,3 +5,4 @@ seaborn
 plotly
 streamlit-aggrid
 scikit-learn
+folium
