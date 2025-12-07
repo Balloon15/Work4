@@ -30,13 +30,22 @@ def generate_cluster_data(df):
     return X
 
 # Функция для кластеризации и построения графика
-def plot_clusters(X):
+def plot_clusters(X, df):
     kmeans = KMeans(n_clusters=4)
     y_kmeans = kmeans.fit_predict(X)
     
     # Silhouette Score
     silhouette_avg = silhouette_score(X, y_kmeans)
     st.metric("Silhouette Score", round(silhouette_avg, 2))
+
+    # Добавление динамических интерпретаций
+    cluster_data = pd.DataFrame(X, columns=df.columns)
+    cluster_data['Cluster'] = y_kmeans
+    avg_price_per_cluster = cluster_data.groupby('Cluster')['SALE PRICE'].mean().reset_index()
+
+    # Определение кластера с максимальной средней ценой
+    max_price_cluster = avg_price_per_cluster.loc[avg_price_per_cluster['SALE PRICE'].idxmax()]
+    st.write(f"Кластер {max_price_cluster['Cluster']} имеет наивысшую среднюю цену: ${max_price_cluster['SALE PRICE']:.2f}")
 
     plt.figure(figsize=(10, 6))
     plt.scatter(X[:, 0], X[:, 1], c=y_kmeans, s=50, cmap='viridis')
@@ -127,7 +136,7 @@ data = clean_data(data)
 if page == 'Кластеры':
     st.title('Кластеры в scatter plots с центроидами')
     X = generate_cluster_data(data)
-    plot_clusters(X)
+    plot_clusters(X, data)
 
 elif page == 'Временной ряд':
     st.title('Средняя цена продажи по месяцам')
