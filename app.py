@@ -3,7 +3,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 from sklearn.cluster import KMeans
-from sklearn.metrics import confusion_matrix, roc_curve, auc
+from sklearn.metrics import silhouette_score, confusion_matrix, roc_curve, auc, r2_score, accuracy_score
 from sklearn.model_selection import train_test_split
 from sklearn.ensemble import RandomForestClassifier
 import streamlit as st
@@ -16,7 +16,6 @@ def load_data():
 
 # Функция для очистки данных
 def clean_data(df):
-    # Преобразование SALE PRICE, LAND SQUARE FEET и GROSS SQUARE FEET в числовой формат
     df['SALE PRICE'] = pd.to_numeric(df['SALE PRICE'].str.replace(',', '').str.strip(), errors='coerce')
     df['LAND SQUARE FEET'] = pd.to_numeric(df['LAND SQUARE FEET'].str.replace(',', '').str.strip(), errors='coerce')
     df['GROSS SQUARE FEET'] = pd.to_numeric(df['GROSS SQUARE FEET'].str.replace(',', '').str.strip(), errors='coerce')
@@ -26,7 +25,6 @@ def clean_data(df):
 
 # Генерация данных для кластеризации
 def generate_cluster_data(df):
-    # Используем только числовые данные для кластеризации
     numeric_columns = df.select_dtypes(include=['float64', 'int64']).columns.tolist()
     X = df[numeric_columns].values
     return X
@@ -35,6 +33,10 @@ def generate_cluster_data(df):
 def plot_clusters(X):
     kmeans = KMeans(n_clusters=4)
     y_kmeans = kmeans.fit_predict(X)
+    
+    # Silhouette Score
+    silhouette_avg = silhouette_score(X, y_kmeans)
+    st.metric("Silhouette Score", round(silhouette_avg, 2))
 
     plt.figure(figsize=(10, 6))
     plt.scatter(X[:, 0], X[:, 1], c=y_kmeans, s=50, cmap='viridis')
@@ -62,19 +64,14 @@ def plot_time_series(df):
 
 # Функция для генерации данных для классификации и построения confusion matrix и ROC curve
 def plot_classification(df):
-    # Пример: предсказание, будет ли цена продажи выше медианы
     df['TARGET'] = (df['SALE PRICE'] > df['SALE PRICE'].median()).astype(int)
-    
-    # Используем только числовые признаки для обучения
     X = df[['LAND SQUARE FEET', 'GROSS SQUARE FEET']]
     y = df['TARGET']
 
-    # Проверка на наличие пропусков
     if X.isnull().any().any() or y.isnull().any():
         st.warning("В данных есть пропуски. Пожалуйста, проверьте данные.")
         return
 
-    # Проверка типов данных
     if not np.issubdtype(X['LAND SQUARE FEET'].dtype, np.number) or not np.issubdtype(X['GROSS SQUARE FEET'].dtype, np.number) or not np.issubdtype(y.dtype, np.number):
         st.warning("Все признаки должны быть числовыми.")
         return
@@ -86,6 +83,10 @@ def plot_classification(df):
     clf = RandomForestClassifier()
     clf.fit(X_train, y_train)
     y_pred = clf.predict(X_test)
+
+    # Accuracy
+    accuracy = accuracy_score(y_test, y_pred)
+    st.metric("Accuracy", round(accuracy, 2))
 
     # Confusion Matrix
     cm = confusion_matrix(y_test, y_pred)
@@ -110,6 +111,10 @@ def plot_classification(df):
     plt.title('ROC Кривая')
     plt.legend(loc="lower right")
     st.pyplot(plt)
+
+    # R² Score
+    r2 = r2_score(y_test, y_pred)
+    st.metric("R² Score", round(r2, 2))
 
 # Основной код приложения
 st.sidebar.title('Навигация')
