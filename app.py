@@ -142,6 +142,11 @@ def plot_classification(df):
 
 # Функция для создания интерактивной карты
 def plot_map(df):
+    # Проверка наличия нужных столбцов
+    if 'LATITUDE' not in df.columns or 'LONGITUDE' not in df.columns:
+        st.warning("В датасете отсутствуют столбцы LATITUDE и LONGITUDE.")
+        return
+
     # Используем только строки с ненулевыми координатами
     df = df[df['LATITUDE'].notnull() & df['LONGITUDE'].notnull()]
     m = folium.Map(location=[df['LATITUDE'].mean(), df['LONGITUDE'].mean()], zoom_start=12)
@@ -161,6 +166,9 @@ page = st.sidebar.radio('Выберите страницу:', ['Кластеры
 # Загрузка и очистка данных
 data = load_data()
 data = clean_data(data)
+
+# Вывод столбцов для проверки
+st.write("Столбцы в датасете:", data.columns.tolist())
 
 if page == 'Кластеры':
     st.title('Кластеры в scatter plots с центроидами')
