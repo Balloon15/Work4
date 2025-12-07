@@ -3,307 +3,521 @@ import pandas as pd
 import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 import seaborn as sns
 import matplotlib.pyplot as plt
-import folium
-from streamlit_folium import st_folium
-from sklearn.preprocessing import StandardScaler
-from sklearn.cluster import KMeans
-from sklearn.model_selection import train_test_split
-from sklearn.ensemble import RandomForestRegressor
-from sklearn.metrics import mean_absolute_error, r2_score
-import warnings
-warnings.filterwarnings("ignore")
+from datetime import datetime
+import io
 
-# ====== Загрузка и очистка данных ======
+# Настройка страницы
+st.set_page_config(
+    page_title="NYC Property Sales Dashboard",
+    page_icon="🏙️",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
+# Загрузка данных
 @st.cache_data
 def load_data():
-    # Загружаем CSV вручную с правильным разделителем и именами колонок (по структуре файла)
-    # Судя по данным, у вас 21 колонка
-    cols = [
-        "id", "borough", "neighborhood", "building_class_category", "tax_class_at_present",
-        "block", "lot", "ease_ment", "building_class_at_present", "address", "apartment_number",
-        "zip_code", "residential_units", "commercial_units", "total_units", "land_square_feet",
-        "gross_square_feet", "year_built", "tax_class_at_time_of_sale", "building_class_at_time_of_sale",
-        "sale_price", "sale_date"
-    ]
-    df = pd.read_csv("nyc-rolling-sales.csv", names=cols, skiprows=1, low_memory=False)
+    # Читаем данные из строкового буфера
+    data = pd.read_csv("nyc-rolling-sales.csv")
+    
+    # Преобразование типов данных
+    # Преобразуем числовые столбцы
+    numeric_columns = ['SALE PRICE', 'LAND SQUARE FEET', 'GROSS SQUARE FEET', 
+                       'YEAR BUILT', 'RESIDENTIAL UNITS', 'COMMERCIAL UNITS', 
+                       'TOTAL UNITS', 'ZIP CODE']
+    
+    for col in numeric_columns:
+        if col in data.columns:
+            # Заменяем нечисловые значения и преобразуем
+            data[col] = pd.to_numeric(data[col].replace(' -  ', np.nan).replace(' - ', np.nan).replace(' -', np.nan), errors='coerce')
+    
+    # Преобразуем дату
+    if 'SALE DATE' in data.columns:
+        data['SALE DATE'] = pd.to_datetime(data['SALE DATE'], errors='coerce')
+    
+    # Очистка цены продажи
+    if 'SALE PRICE' in data.columns:
+        # Удаляем строки с некорректными ценами
+        data = data[data['SALE PRICE'] > 0]
+    
+    return data
 
-    # Очистка: приведение типов
-    df['sale_price'] = pd.to_numeric(df['sale_price'], errors='coerce')
-    df['land_square_feet'] = pd.to_numeric(df['land_square_feet'], errors='coerce')
-    df['gross_square_feet'] = pd.to_numeric(df['gross_square_feet'], errors='coerce')
-    df['year_built'] = pd.to_numeric(df['year_built'], errors='coerce')
-    df['sale_date'] = pd.to_datetime(df['sale_date'], errors='coerce')
-
-    # Фильтрация некорректных/нулевых цен (часто — сделки без реальной стоимости)
-    df = df[(df['sale_price'] > 10000) & (df['sale_price'] < 100_000_000)]
-    # Удаление явно некорректных площадей
-    df = df[
-        (df['land_square_feet'] > 100) |
-        (df['gross_square_feet'] > 100) |
-        (df['land_square_feet'].isna()) |
-        (df['gross_square_feet'].isna())
-    ]
-    return df
-
+# Загружаем данные
 df = load_data()
-df_original = df.copy()
 
-# ====== Настройка страницы ======
-st.set_page_config(page_title="NYC Real Estate Dashboard", layout="wide")
-st.title("🏙️ NYC Rolling Sales Dashboard")
+# Создаем навигацию
+st.sidebar.title("🏙️ NYC Property Sales Dashboard")
+page = st.sidebar.radio(
+    "Навигация",
+    ["📊 Визуализация исходных данных", "🔍 Результаты анализа"]
+)
 
-# Навигация
-page = st.sidebar.radio("🧭 Navigation", ["📊 Raw Data Visualization", "🔬 Analysis Results"])
+# Добавляем фильтры в сайдбар
+st.sidebar.markdown("---")
+st.sidebar.subheader("📌 Фильтры данных")
 
-# ====== Страница 1: Raw Data Visualization ======
-if page == "📊 Raw Data Visualization":
-    st.header("🔍 Raw Data Overview")
+# Фильтр по районе
+neighborhoods = ['Все'] + sorted(df['NEIGHBORHOOD'].dropna().unique().tolist())
+selected_neighborhood = st.sidebar.selectbox("Район", neighborhoods)
 
-    # --- KPI карточки ---
-    col1, col2, col3, col4 = st.columns(4)
-    col1.metric("Total Records", f"{len(df):,}")
-    col2.metric("Avg Sale Price", f"${df['sale_price'].mean():,.0f}")
-    col3.metric("Median Sale Price", f"${df['sale_price'].median():,.0f}")
-    col4.metric("Missing Price", f"{df['sale_price'].isnull().sum()}")
+# Фильтр по типу здания
+building_classes = ['Все'] + sorted(df['BUILDING CLASS CATEGORY'].dropna().unique().tolist())
+selected_building_class = st.sidebar.selectbox("Класс здания", building_classes)
 
-    # --- Фильтры (в раскрывающемся блоке) ---
-    with st.expander("⚙️ Filters"):
-        col_a, col_b, col_c, col_d = st.columns(4)
-        boroughs = ["All"] + sorted(df["borough"].dropna().unique().tolist())
-        selected_borough = col_a.selectbox("Borough", boroughs)
-        min_price = int(df["sale_price"].quantile(0.01))
-        max_price = int(df["sale_price"].quantile(0.99))
-        price_range = col_b.slider("Sale Price Range ($)", min_price, max_price, (min_price, max_price))
-        
-        min_year = int(df["year_built"].min())
-        max_year = int(df["year_built"].max())
-        year_range = col_c.slider("Year Built", min_year, max_year, (1900, max_year))
-        
-        # Фильтрация
-        filtered_df = df[
-            (df["sale_price"] >= price_range[0]) &
-            (df["sale_price"] <= price_range[1]) &
-            (df["year_built"] >= year_range[0]) &
-            (df["year_built"] <= year_range[1])
-        ]
-        if selected_borough != "All":
-            filtered_df = filtered_df[filtered_df["borough"] == selected_borough]
-
-    # --- Таблица данных ---
-    st.subheader("📋 Sample Data")
-    st.dataframe(
-        filtered_df.head(20).reset_index(drop=True),
-        use_container_width=True,
-        height=400
+# Фильтр по году постройки
+if 'YEAR BUILT' in df.columns:
+    min_year = int(df['YEAR BUILT'].min())
+    max_year = int(df['YEAR BUILT'].max())
+    year_range = st.sidebar.slider(
+        "Год постройки",
+        min_value=min_year,
+        max_value=max_year,
+        value=(min_year, max_year)
     )
 
-    # --- Распределения — два ряда по 2 графика ---
-    st.subheader("📈 Feature Distributions")
+# Фильтр по цене
+if 'SALE PRICE' in df.columns:
+    min_price = float(df['SALE PRICE'].min())
+    max_price = float(df['SALE PRICE'].max())
+    price_range = st.sidebar.slider(
+        "Диапазон цен ($)",
+        min_value=float(min_price),
+        max_value=float(max_price),
+        value=(float(min_price), float(max_price))
+    )
 
-    tab_num, tab_cat = st.tabs(["🔢 Numerical", "🔤 Categorical"])
+# Применяем фильтры
+filtered_df = df.copy()
 
-    with tab_num:
-        cols_num = ['sale_price', 'gross_square_feet', 'year_built', 'total_units']
-        figs = []
-        for i, col in enumerate(cols_num):
-            if col in filtered_df.columns and filtered_df[col].dtype in ['int64', 'float64']:
-                fig = px.histogram(
-                    filtered_df, x=col, nbins=50,
-                    marginal="box",
-                    title=f"Distribution of {col.replace('_', ' ').title()}"
-                )
-                fig.update_layout(height=350)
-                figs.append(fig)
-        for i in range(0, len(figs), 2):
-            cols_plot = st.columns(2)
-            for j, fig in enumerate(figs[i:i+2]):
-                with cols_plot[j]:
-                    st.plotly_chart(fig, use_container_width=True)
+if selected_neighborhood != 'Все':
+    filtered_df = filtered_df[filtered_df['NEIGHBORHOOD'] == selected_neighborhood]
 
-    with tab_cat:
-        cols_cat = ['borough', 'neighborhood', 'building_class_category']
-        for col in cols_cat:
-            if col in filtered_df.columns:
-                top_n = filtered_df[col].value_counts().nlargest(10)
-                fig = px.bar(
-                    x=top_n.index, y=top_n.values,
-                    labels={'x': col, 'y': 'Count'},
-                    title=f"Top 10 {col.replace('_', ' ').title()}",
-                    color=top_n.values
+if selected_building_class != 'Все':
+    filtered_df = filtered_df[filtered_df['BUILDING CLASS CATEGORY'] == selected_building_class]
+
+if 'YEAR BUILT' in df.columns:
+    filtered_df = filtered_df[
+        (filtered_df['YEAR BUILT'] >= year_range[0]) & 
+        (filtered_df['YEAR BUILT'] <= year_range[1])
+    ]
+
+if 'SALE PRICE' in df.columns:
+    filtered_df = filtered_df[
+        (filtered_df['SALE PRICE'] >= price_range[0]) & 
+        (filtered_df['SALE PRICE'] <= price_range[1])
+    ]
+
+# Страница 1: Визуализация исходных данных
+if page == "📊 Визуализация исходных данных":
+    st.title("📊 Визуализация исходных данных")
+    
+    # KPI карточки
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        st.metric("Всего записей", len(filtered_df))
+    
+    with col2:
+        if 'SALE PRICE' in filtered_df.columns:
+            avg_price = filtered_df['SALE PRICE'].mean()
+            st.metric("Средняя цена ($)", f"{avg_price:,.0f}")
+    
+    with col3:
+        if 'YEAR BUILT' in filtered_df.columns:
+            avg_year = filtered_df['YEAR BUILT'].mean()
+            st.metric("Средний год постройки", f"{avg_year:.0f}")
+    
+    with col4:
+        unique_neighborhoods = filtered_df['NEIGHBORHOOD'].nunique()
+        st.metric("Количество районов", unique_neighborhoods)
+    
+    st.markdown("---")
+    
+    # Таблица с данными
+    st.subheader("📋 Просмотр данных")
+    
+    # Выбор колонок для отображения
+    all_columns = filtered_df.columns.tolist()
+    selected_columns = st.multiselect(
+        "Выберите колонки для отображения:",
+        all_columns,
+        default=all_columns[:10] if len(all_columns) > 10 else all_columns
+    )
+    
+    # Пагинация
+    page_size = st.selectbox("Строк на странице:", [10, 25, 50, 100])
+    page_number = st.number_input("Номер страницы:", min_value=1, value=1)
+    
+    start_idx = (page_number - 1) * page_size
+    end_idx = start_idx + page_size
+    
+    if selected_columns:
+        st.dataframe(
+            filtered_df[selected_columns].iloc[start_idx:end_idx],
+            use_container_width=True,
+            height=400
+        )
+    
+    # Экспорт данных
+    csv = filtered_df.to_csv(index=False).encode('utf-8')
+    st.download_button(
+        label="📥 Скачать отфильтрованные данные (CSV)",
+        data=csv,
+        file_name="filtered_nyc_property_sales.csv",
+        mime="text/csv",
+    )
+    
+    st.markdown("---")
+    
+    # Базовые статистики
+    st.subheader("📈 Базовая статистика")
+    
+    if st.checkbox("Показать статистики по числовым колонкам"):
+        numeric_cols = filtered_df.select_dtypes(include=[np.number]).columns.tolist()
+        if numeric_cols:
+            stats_df = filtered_df[numeric_cols].describe().T
+            stats_df = stats_df[['count', 'mean', 'std', 'min', '25%', '50%', '75%', 'max']]
+            stats_df.columns = ['Кол-во', 'Среднее', 'Стд. откл.', 'Мин.', '25%', 'Медиана', '75%', 'Макс.']
+            st.dataframe(stats_df.style.format("{:,.2f}"), use_container_width=True)
+    
+    st.markdown("---")
+    
+    # Визуализации
+    st.subheader("📊 Визуализации данных")
+    
+    # Выбор типа графика
+    viz_type = st.selectbox(
+        "Выберите тип визуализации:",
+        ["Распределение цен", "Распределение по районам", "Распределение по году постройки", 
+         "Корреляционная матрица", "Scatter plot: Цена vs Площадь"]
+    )
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        if viz_type == "Распределение цен" and 'SALE PRICE' in filtered_df.columns:
+            fig = px.histogram(
+                filtered_df, 
+                x='SALE PRICE',
+                nbins=50,
+                title="Распределение цен на недвижимость",
+                labels={'SALE PRICE': 'Цена продажи ($)'}
+            )
+            fig.update_layout(xaxis_tickformat=',')
+            st.plotly_chart(fig, use_container_width=True)
+            
+        elif viz_type == "Распределение по районам":
+            top_neighborhoods = filtered_df['NEIGHBORHOOD'].value_counts().head(15)
+            fig = px.bar(
+                x=top_neighborhoods.index,
+                y=top_neighborhoods.values,
+                title="Топ 15 районов по количеству продаж",
+                labels={'x': 'Район', 'y': 'Количество продаж'}
+            )
+            fig.update_xaxes(tickangle=45)
+            st.plotly_chart(fig, use_container_width=True)
+            
+        elif viz_type == "Распределение по году постройки" and 'YEAR BUILT' in filtered_df.columns:
+            fig = px.histogram(
+                filtered_df,
+                x='YEAR BUILT',
+                nbins=30,
+                title="Распределение по году постройки",
+                labels={'YEAR BUILT': 'Год постройки'}
+            )
+            st.plotly_chart(fig, use_container_width=True)
+    
+    with col2:
+        if viz_type == "Корреляционная матрица":
+            numeric_cols = filtered_df.select_dtypes(include=[np.number]).columns.tolist()
+            if len(numeric_cols) > 1:
+                corr_matrix = filtered_df[numeric_cols].corr()
+                fig = px.imshow(
+                    corr_matrix,
+                    text_auto='.2f',
+                    aspect="auto",
+                    title="Корреляционная матрица",
+                    color_continuous_scale='RdBu',
+                    range_color=[-1, 1]
                 )
                 st.plotly_chart(fig, use_container_width=True)
-
-    # --- Корреляционная матрица ---
-    st.subheader("🔗 Correlation Heatmap")
-    num_cols = ['sale_price', 'land_square_feet', 'gross_square_feet', 'year_built', 'total_units']
-    corr_df = filtered_df[num_cols].corr()
-    fig_corr = px.imshow(
-        corr_df,
-        text_auto=".2f",
-        color_continuous_scale="RdBu_r",
-        aspect="auto",
-        title="Correlation Matrix (Numeric Features)"
+                
+        elif viz_type == "Scatter plot: Цена vs Площадь":
+            if 'SALE PRICE' in filtered_df.columns and 'GROSS SQUARE FEET' in filtered_df.columns:
+                fig = px.scatter(
+                    filtered_df,
+                    x='GROSS SQUARE FEET',
+                    y='SALE PRICE',
+                    color='NEIGHBORHOOD',
+                    title="Цена vs Общая площадь",
+                    labels={'GROSS SQUARE FEET': 'Общая площадь (кв. фут)', 'SALE PRICE': 'Цена продажи ($)'},
+                    opacity=0.6
+                )
+                fig.update_layout(xaxis_tickformat=',', yaxis_tickformat=',')
+                st.plotly_chart(fig, use_container_width=True)
+    
+    # Pie chart для категорий
+    st.markdown("---")
+    st.subheader("📊 Категориальный анализ")
+    
+    cat_col = st.selectbox(
+        "Выберите категориальную переменную:",
+        ['BOROUGH', 'TAX CLASS AT PRESENT', 'BUILDING CLASS CATEGORY']
     )
-    st.plotly_chart(fig_corr, use_container_width=True)
+    
+    if cat_col in filtered_df.columns:
+        fig = px.pie(
+            filtered_df,
+            names=cat_col,
+            title=f"Распределение по {cat_col}",
+            hole=0.3
+        )
+        st.plotly_chart(fig, use_container_width=True)
 
-    # --- Scatter plot matrix (выбор двух признаков) ---
-    st.subheader("🔍 Scatter Plot (Interactive)")
-    col_x = st.selectbox("X-axis", num_cols, index=1)
-    col_y = st.selectbox("Y-axis", num_cols, index=0)
-    color_by = st.selectbox("Color by", ["None", "borough", "building_class_category"])
+# Страница 2: Результаты анализа
+else:
+    st.title("🔍 Результаты анализа")
+    
+    # Информация о выбранных данных
+    st.info(f"📊 Анализ на основе {len(filtered_df)} записей")
+    
+    # KPI для анализа
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        if 'SALE PRICE' in filtered_df.columns:
+            median_price = filtered_df['SALE PRICE'].median()
+            st.metric("Медианная цена ($)", f"{median_price:,.0f}")
+    
+    with col2:
+        if 'GROSS SQUARE FEET' in filtered_df.columns:
+            avg_sqft = filtered_df['GROSS SQUARE FEET'].mean()
+            st.metric("Средняя площадь (кв.фут)", f"{avg_sqft:,.0f}")
+    
+    with col3:
+        if 'SALE PRICE' in filtered_df.columns and 'GROSS SQUARE FEET' in filtered_df.columns:
+            price_per_sqft = (filtered_df['SALE PRICE'] / filtered_df['GROSS SQUARE FEET']).mean()
+            st.metric("Средняя цена за кв.фут ($)", f"{price_per_sqft:.2f}")
+    
+    with col4:
+        if 'YEAR BUILT' in filtered_df.columns:
+            oldest_building = filtered_df['YEAR BUILT'].min()
+            st.metric("Самое старое здание (год)", f"{oldest_building:.0f}")
+    
+    st.markdown("---")
+    
+    # Анализ трендов
+    st.subheader("📈 Анализ трендов")
+    
+    # Анализ по месяцам (если есть дата)
+    if 'SALE DATE' in filtered_df.columns:
+        filtered_df['SALE_MONTH'] = filtered_df['SALE DATE'].dt.to_period('M').astype(str)
+        
+        monthly_sales = filtered_df.groupby('SALE_MONTH').agg({
+            'SALE PRICE': ['count', 'mean', 'median']
+        }).reset_index()
+        
+        monthly_sales.columns = ['Month', 'Number of Sales', 'Average Price', 'Median Price']
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            fig = px.line(
+                monthly_sales,
+                x='Month',
+                y='Number of Sales',
+                title="Количество продаж по месяцам",
+                markers=True
+            )
+            fig.update_xaxes(tickangle=45)
+            st.plotly_chart(fig, use_container_width=True)
+        
+        with col2:
+            fig = px.line(
+                monthly_sales,
+                x='Month',
+                y='Median Price',
+                title="Медианная цена по месяцам",
+                markers=True
+            )
+            fig.update_layout(yaxis_tickformat=',')
+            fig.update_xaxes(tickangle=45)
+            st.plotly_chart(fig, use_container_width=True)
+    
+    st.markdown("---")
+    
+    # Сравнение районов
+    st.subheader("🏘️ Сравнение районов")
+    
+    if 'NEIGHBORHOOD' in filtered_df.columns and 'SALE PRICE' in filtered_df.columns:
+        neighborhood_stats = filtered_df.groupby('NEIGHBORHOOD').agg({
+            'SALE PRICE': ['count', 'mean', 'median', 'std']
+        }).round(2).reset_index()
+        
+        neighborhood_stats.columns = ['Район', 'Количество продаж', 'Средняя цена', 'Медианная цена', 'Стд. отклонение']
+        
+        # Сортировка
+        sort_by = st.selectbox(
+            "Сортировать районы по:",
+            ['Количество продаж', 'Средняя цена', 'Медианная цена']
+        )
+        
+        top_n = st.slider("Показать топ N районов:", 5, 20, 10)
+        
+        neighborhood_stats_sorted = neighborhood_stats.sort_values(sort_by, ascending=False).head(top_n)
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            fig = px.bar(
+                neighborhood_stats_sorted,
+                x='Район',
+                y=sort_by,
+                title=f"Топ {top_n} районов по {sort_by.lower()}",
+                color=sort_by,
+                color_continuous_scale='Viridis'
+            )
+            fig.update_xaxes(tickangle=45)
+            if 'цена' in sort_by.lower():
+                fig.update_layout(yaxis_tickformat=',')
+            st.plotly_chart(fig, use_container_width=True)
+        
+        with col2:
+            st.dataframe(
+                neighborhood_stats_sorted.style.format({
+                    'Средняя цена': '{:,.0f}',
+                    'Медианная цена': '{:,.0f}',
+                    'Стд. отклонение': '{:,.0f}'
+                }),
+                use_container_width=True,
+                height=400
+            )
+    
+    st.markdown("---")
+    
+    # Анализ ценовых сегментов
+    st.subheader("💰 Анализ ценовых сегментов")
+    
+    if 'SALE PRICE' in filtered_df.columns:
+        # Создание ценовых категорий
+        price_bins = [0, 1000000, 5000000, 10000000, 50000000, float('inf')]
+        price_labels = ['< $1M', '$1M-$5M', '$5M-$10M', '$10M-$50M', '> $50M']
+        
+        filtered_df['PRICE_CATEGORY'] = pd.cut(
+            filtered_df['SALE PRICE'],
+            bins=price_bins,
+            labels=price_labels,
+            include_lowest=True
+        )
+        
+        price_dist = filtered_df['PRICE_CATEGORY'].value_counts().sort_index()
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            fig = px.pie(
+                values=price_dist.values,
+                names=price_dist.index,
+                title="Распределение по ценовым категориям",
+                hole=0.4
+            )
+            st.plotly_chart(fig, use_container_width=True)
+        
+        with col2:
+            # Статистика по ценовым категориям
+            category_stats = filtered_df.groupby('PRICE_CATEGORY').agg({
+                'SALE PRICE': ['count', 'mean', 'median'],
+                'GROSS SQUARE FEET': 'mean'
+            }).round(2).reset_index()
+            
+            category_stats.columns = ['Ценовая категория', 'Количество', 'Средняя цена', 'Медианная цена', 'Средняя площадь']
+            
+            category_stats['Цена за кв.фут'] = category_stats['Средняя цена'] / category_stats['Средняя площадь']
+            
+            st.dataframe(
+                category_stats.style.format({
+                    'Средняя цена': '{:,.0f}',
+                    'Медианная цена': '{:,.0f}',
+                    'Средняя площадь': '{:,.0f}',
+                    'Цена за кв.фут': '{:.2f}'
+                }),
+                use_container_width=True,
+                height=300
+            )
+    
+    st.markdown("---")
+    
+    # Инсайты
+    st.subheader("💡 Ключевые инсайты")
+    
+    insight_col1, insight_col2 = st.columns(2)
+    
+    with insight_col1:
+        st.markdown("##### 📊 Основные наблюдения:")
+        
+        if 'SALE PRICE' in filtered_df.columns:
+            # Самый дорогой район
+            if 'NEIGHBORHOOD' in filtered_df.columns:
+                most_expensive = filtered_df.groupby('NEIGHBORHOOD')['SALE PRICE'].mean().idxmax()
+                most_expensive_price = filtered_df.groupby('NEIGHBORHOOD')['SALE PRICE'].mean().max()
+                st.write(f"**Самый дорогой район**: {most_expensive} (средняя цена: ${most_expensive_price:,.0f})")
+            
+            # Динамика цен
+            if 'SALE DATE' in filtered_df.columns:
+                recent_prices = filtered_df[filtered_df['SALE DATE'] > '2017-01-01']['SALE PRICE'].mean()
+                older_prices = filtered_df[filtered_df['SALE DATE'] < '2017-01-01']['SALE PRICE'].mean()
+                if older_prices > 0:
+                    price_change = ((recent_prices - older_prices) / older_prices) * 100
+                    st.write(f"**Изменение цен**: {price_change:+.1f}% с начала 2017 года")
+    
+    with insight_col2:
+        st.markdown("##### 🔍 Рекомендации для анализа:")
+        
+        insights = [
+            "Рассмотрите инвестиции в районы с растущей медианной ценой",
+            "Обратите внимание на новые постройки - они часто имеют более высокую стоимость за кв.фут",
+            "Сравните ROI разных типов зданий (жилые vs коммерческие)",
+            "Проанализируйте сезонность продаж для оптимального времени покупки/продажи"
+        ]
+        
+        for i, insight in enumerate(insights, 1):
+            st.write(f"{i}. {insight}")
+    
+    # Дополнительные опции анализа
+    st.markdown("---")
+    st.subheader("⚙️ Дополнительные опции анализа")
+    
+    if st.button("🔄 Запустить углубленный анализ"):
+        with st.spinner("Выполняется анализ..."):
+            # Здесь можно добавить более сложный анализ
+            st.success("Анализ завершен!")
+            
+            # Пример дополнительного анализа
+            if 'SALE PRICE' in filtered_df.columns and 'GROSS SQUARE FEET' in filtered_df.columns:
+                # Линейная регрессия (упрощенная)
+                correlation = filtered_df['SALE PRICE'].corr(filtered_df['GROSS SQUARE FEET'])
+                st.write(f"**Корреляция цена-площадь**: {correlation:.3f}")
+                
+                if correlation > 0.7:
+                    st.info("✅ Сильная положительная корреляция: цена сильно зависит от площади")
+                elif correlation > 0.3:
+                    st.warning("⚠️ Умеренная корреляция: площадь влияет на цену, но есть другие факторы")
+                else:
+                    st.info("ℹ️ Слабая корреляция: цена мало зависит от площади")
 
-    scatter_fig = px.scatter(
-        filtered_df,
-        x=col_x,
-        y=col_y,
-        color=None if color_by == "None" else color_by,
-        hover_data=["address", "neighborhood"],
-        title=f"{col_y} vs {col_x}",
-        trendline="ols"
-    )
-    st.plotly_chart(scatter_fig, use_container_width=True)
-
-# ====== Страница 2: Analysis Results ======
-elif page == "🔬 Analysis Results":
-    st.header("🧪 Advanced Analysis & Modeling")
-
-    # Подготовка данных для модели
-    df_model = df_original.copy()
-    df_model = df_model.dropna(subset=['sale_price', 'gross_square_feet', 'year_built', 'total_units'])
-    df_model = df_model[(df_model['gross_square_feet'] > 0) & (df_model['year_built'] > 1800)]
-
-    features = ['gross_square_feet', 'year_built', 'total_units']
-    X = df_model[features]
-    y = df_model['sale_price']
-
-    # --- 1. Кластеризация (KMeans) ---
-    st.subheader("🏘️ Clustering: Property Segments")
-
-    scaler = StandardScaler()
-    X_scaled = scaler.fit_transform(X)
-    kmeans = KMeans(n_clusters=4, random_state=42)
-    clusters = kmeans.fit_predict(X_scaled)
-    df_model['cluster'] = clusters
-
-    # Визуализация кластеров
-    fig_cluster = px.scatter_3d(
-        df_model,
-        x='gross_square_feet',
-        y='year_built',
-        z='total_units',
-        color='cluster',
-        symbol='cluster',
-        opacity=0.7,
-        title="Property Clusters (3D)",
-        hover_data=['sale_price', 'neighborhood']
-    )
-    fig_cluster.update_layout(height=500)
-    st.plotly_chart(fig_cluster, use_container_width=True)
-
-    # KPI по кластерам
-    cluster_stats = df_model.groupby('cluster')['sale_price'].agg(['mean', 'median', 'count']).round()
-    cluster_stats['mean'] = cluster_stats['mean'].apply(lambda x: f"${x:,.0f}")
-    cluster_stats['median'] = cluster_stats['median'].apply(lambda x: f"${x:,.0f}")
-    st.write("**Cluster Insights**")
-    st.dataframe(cluster_stats, use_container_width=True)
-
-    # --- 2. Прогнозирование цены (Random Forest) ---
-    st.subheader("💰 Price Prediction (Regression)")
-
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-    rf = RandomForestRegressor(n_estimators=50, max_depth=10, random_state=42)
-    rf.fit(X_train, y_train)
-    y_pred = rf.predict(X_test)
-
-    r2 = r2_score(y_test, y_pred)
-    mae = mean_absolute_error(y_test, y_pred)
-
-    # KPI
-    col1, col2 = st.columns(2)
-    col1.metric("R² Score", f"{r2:.3f}")
-    col2.metric("MAE ($)", f"${mae:,.0f}")
-
-    # Scatter предсказаний
-    pred_df = pd.DataFrame({'Actual': y_test, 'Predicted': y_pred}).reset_index(drop=True)
-    fig_pred = px.scatter(
-        pred_df,
-        x='Actual',
-        y='Predicted',
-        trendline="ols",
-        title="Predicted vs Actual Sale Price",
-        labels={"Actual": "Actual Price ($)", "Predicted": "Predicted Price ($)"},
-        opacity=0.5
-    )
-    fig_pred.add_shape(
-        type="line", line=dict(dash='dash', color="gray"),
-        x0=pred_df['Actual'].min(), x1=pred_df['Actual'].max(),
-        y0=pred_df['Actual'].min(), y1=pred_df['Actual'].max()
-    )
-    st.plotly_chart(fig_pred, use_container_width=True)
-
-    # Feature Importance
-    importances = rf.feature_importances_
-    fi_df = pd.DataFrame({
-        'feature': features,
-        'importance': importances
-    }).sort_values('importance', ascending=False)
-
-    fig_fi = px.bar(fi_df, x='importance', y='feature', orientation='h',
-                    title="Feature Importance (Random Forest)")
-    st.plotly_chart(fig_fi, use_container_width=True)
-
-    # --- 3. Геовизуализация (Folium) ---
-    st.subheader("📍 Geographic Distribution (Sample of 1000 sales)")
-
-    # Подготовим координаты (примечание: в датасете нет lat/lon — сымитируем через zip → средние координаты по районам)
-    # Для демо — возьмём средние координаты по borough (упрощённо)
-    borough_coords = {
-        1: (40.7505, -73.9934),  # Manhattan
-        2: (40.8448, -73.8648),  # Bronx
-        3: (40.6501, -73.9496),  # Brooklyn
-        4: (40.7282, -73.7949),  # Queens
-        5: (40.5795, -74.1502),  # Staten Island
-    }
-
-    df_map = df_model.sample(n=min(1000, len(df_model)), random_state=42).copy()
-    df_map['lat'] = df_map['borough'].map(lambda b: borough_coords.get(b, (40.7, -74.0))[0])
-    df_map['lon'] = df_map['borough'].map(lambda b: borough_coords.get(b, (40.7, -74.0))[1])
-    # Немного "размажем" точки, чтобы не все в одной точке
-    np.random.seed(42)
-    df_map['lat'] += np.random.normal(0, 0.005, len(df_map))
-    df_map['lon'] += np.random.normal(0, 0.005, len(df_map))
-
-    # Folium карта
-    m = folium.Map(location=[40.7, -73.9], zoom_start=10, tiles="CartoDB positron")
-    for _, row in df_map.iterrows():
-        folium.CircleMarker(
-            location=[row['lat'], row['lon']],
-            radius=2 + np.log1p(row['sale_price']) / 10,
-            color="steelblue",
-            fill=True,
-            fill_opacity=0.6,
-            popup=f"${row['sale_price']:,.0f}<br>{row['neighborhood']}<br>{row['address']}"
-        ).add_to(m)
-
-    st_folium(m, width=1000, height=500)
-
-    # --- Интерактивный insight по фильтрам ---
-    st.subheader("💡 Dynamic Insights")
-    selected_cluster = st.selectbox("Select Cluster to Analyze", sorted(df_model['cluster'].unique()))
-    cluster_data = df_model[df_model['cluster'] == selected_cluster]
-    overall_median = df_model['sale_price'].median()
-    cluster_median = cluster_data['sale_price'].median()
-    diff_pct = (cluster_median - overall_median) / overall_median * 100
-
-    st.info(f"""
-    🔹 **Cluster {selected_cluster}** has **{len(cluster_data):,} properties**.  
-    🔹 Median sale price: **${cluster_median:,.0f}**  
-    🔹 This is **{diff_pct:+.1f}%** {'above' if diff_pct > 0 else 'below'} the citywide median (${overall_median:,.0f}).
-    """)
-
-# ====== Footer ======
+# Информация в футере
 st.sidebar.markdown("---")
-st.sidebar.caption("💡 Built with Streamlit • NYC Rolling Sales Dataset")
-st.sidebar.caption("✅ Ready to scale: add time-series, SHAP, export to PDF/CSV")
+st.sidebar.info(
+    """
+    **NYC Property Sales Dashboard**  
+    Анализ данных о продажах недвижимости в Нью-Йорке.  
+    Данные: NYC Rolling Sales Dataset
+    """
+)
+
+# Добавляем возможность сброса фильтров
+if st.sidebar.button("🔄 Сбросить все фильтры"):
+    st.rerun()
