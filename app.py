@@ -64,11 +64,20 @@ def plot_time_series(df):
 def plot_classification(df):
     # Пример: предсказание, будет ли цена продажи выше медианы
     df['TARGET'] = (df['SALE PRICE'] > df['SALE PRICE'].median()).astype(int)
+    
+    # Используем только числовые признаки для обучения
     X = df[['LAND SQUARE FEET', 'GROSS SQUARE FEET']]
     y = df['TARGET']
-    
+
+    # Проверка на наличие пропусков
+    if X.isnull().any().any() or y.isnull().any():
+        st.warning("В данных есть пропуски. Пожалуйста, проверьте данные.")
+        return
+
+    # Разделение на обучающую и тестовую выборки
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=0)
 
+    # Обучение модели
     clf = RandomForestClassifier()
     clf.fit(X_train, y_train)
     y_pred = clf.predict(X_test)
