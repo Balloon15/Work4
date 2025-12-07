@@ -3,6 +3,7 @@ import streamlit as st
 import matplotlib.pyplot as plt
 import seaborn as sns
 import plotly.express as px
+from st_aggrid import AgGrid, GridOptionsBuilder  # Импорт необходимых компонентов для AgGrid
 
 # Загрузка данных
 @st.cache
@@ -39,9 +40,9 @@ page = st.sidebar.radio('Выберите страницу:', ['Таблица �
                                                'Корреляционная матрица', 'Scatter Plots и Pie Charts', 'Фильтры'])
 
 if page == 'Таблица с первыми строками':
-  st.title('Таблица данных')
+    st.title('Таблица данных')
 
-  # Создание конфигурации для таблицы
+    # Создание конфигурации для таблицы
     gb = GridOptionsBuilder.from_dataframe(data)
     gb.configure_pagination(paginationPageSize=10)  # Пагинация
     gb.configure_default_column(editable=False, groupable=True)  # Настройки столбцов
@@ -171,3 +172,7 @@ elif page == 'Фильтры':
 
     st.subheader('Отфильтрованные данные:')
     st.write(filtered_data)
+
+# Запуск приложения
+if __name__ == '__main__':
+    st.write("Запустите это приложение с помощью `streamlit run app.py`")
