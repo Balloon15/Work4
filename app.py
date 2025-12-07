@@ -75,7 +75,7 @@ def plot_classification(df):
         return
 
     # Проверка типов данных
-    if not np.issubdtype(X.dtypes, np.number).all() or not np.issubdtype(y.dtype, np.number):
+    if not np.issubdtype(X['LAND SQUARE FEET'].dtype, np.number) or not np.issubdtype(X['GROSS SQUARE FEET'].dtype, np.number) or not np.issubdtype(y.dtype, np.number):
         st.warning("Все признаки должны быть числовыми.")
         return
 
