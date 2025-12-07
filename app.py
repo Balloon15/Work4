@@ -38,9 +38,11 @@ def plot_clusters(X, df):
     silhouette_avg = silhouette_score(X, y_kmeans)
     st.metric("Silhouette Score", round(silhouette_avg, 2))
 
-    # Добавление динамических интерпретаций
-    cluster_data = pd.DataFrame(X, columns=df.columns)
+    # Создание DataFrame для кластеров с правильными столбцами
+    cluster_data = pd.DataFrame(X, columns=df.select_dtypes(include=['float64', 'int64']).columns)
     cluster_data['Cluster'] = y_kmeans
+    cluster_data['SALE PRICE'] = df['SALE PRICE'].values  # Добавление столбца цены продажи
+
     avg_price_per_cluster = cluster_data.groupby('Cluster')['SALE PRICE'].mean().reset_index()
 
     # Определение кластера с максимальной средней ценой
