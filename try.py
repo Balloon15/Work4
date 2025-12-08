@@ -20,13 +20,13 @@ st.set_page_config(
 COLUMN_TRANSLATIONS = {
     # Основные идентификаторы
     'Unnamed: 0': 'ID',
-    'BOROUGH': 'Боро',
+    'BOROUGH': 'Городской округ',
     'NEIGHBORHOOD': 'Район',
     'BUILDING CLASS CATEGORY': 'Категория класса здания',
     'TAX CLASS AT PRESENT': 'Налоговый класс (текущий)',
     'BLOCK': 'Блок',
     'LOT': 'Участок',
-    'EASE-MENT': 'Сервитут',
+    'EASE-MENT': 'Сервитут (ограниченное пользование чужой собственностью)',
     'BUILDING CLASS AT PRESENT': 'Класс здания (текущий)',
     
     # Адресная информация
@@ -55,7 +55,7 @@ COLUMN_TRANSLATIONS = {
 
 # Функция для перевода названий колонок
 def translate_columns(df):
-    """Переводит названия колонок DataFrame на русский язык"""
+    # Переводит названия колонок DataFrame на русский язык
     translated_cols = []
     for col in df.columns:
         translated_cols.append(COLUMN_TRANSLATIONS.get(col, col))
@@ -64,7 +64,7 @@ def translate_columns(df):
 
 # Функция для обратного перевода (для фильтров)
 def reverse_translate_column(russian_name):
-    """Возвращает оригинальное название колонки по русскому переводу"""
+    # Возвращает оригинальное название колонки по русскому переводу
     for eng, rus in COLUMN_TRANSLATIONS.items():
         if rus == russian_name:
             return eng
@@ -76,7 +76,7 @@ def load_data():
     # Читаем данные из строкового буфера
     data = pd.read_csv("nyc-rolling-sales.csv")
     
-    # Преобразование типов данных
+    # Преобразование типов данных в числовые форматы  
     numeric_columns = ['SALE PRICE', 'LAND SQUARE FEET', 'GROSS SQUARE FEET', 
                        'YEAR BUILT', 'RESIDENTIAL UNITS', 'COMMERCIAL UNITS', 
                        'TOTAL UNITS', 'ZIP CODE']
@@ -191,12 +191,12 @@ if page == "Таблица переводов":
     )
     
     st.markdown("---")
-    st.info("""
-    **Примечание:**  
-    - Все графики и таблицы в дашборде используют русские названия колонок  
-    - Фильтры также используют русские названия  
-    - При экспорте данных используются оригинальные английские названия колонок
-    """)
+    # st.info("""
+    # **Примечание:**  
+    # - Все графики и таблицы в дашборде используют русские названия колонок  
+    # - Фильтры также используют русские названия  
+    # - При экспорте данных используются оригинальные английские названия колонок
+    # """)
 
 # Страница 1: Визуализация исходных данных
 elif page == "Визуализация исходных данных":
@@ -643,15 +643,15 @@ else:
 
 # Информация в футере
 st.sidebar.markdown("---")
-st.sidebar.info(
-    """
-    **NYC Property Sales Dashboard**  
-    Анализ данных о продажах недвижимости в Нью-Йорке.  
-    Данные: NYC Rolling Sales Dataset
+# st.sidebar.info(
+#     """
+#     **NYC Property Sales Dashboard**  
+#     Анализ данных о продажах недвижимости в Нью-Йорке.  
+#     Данные: NYC Rolling Sales Dataset
     
-    **Таблица переводов доступна в навигации**
-    """
-)
+#     **Таблица переводов доступна в навигации**
+#     """
+# )
 
 # Добавляем возможность сброса фильтров
 if st.sidebar.button("Сбросить все фильтры"):
