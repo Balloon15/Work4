@@ -17,6 +17,60 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+# Словарь переводов названий колонок на русский
+COLUMN_TRANSLATIONS = {
+    # Основные идентификаторы
+    'Unnamed: 0': 'ID',
+    'BOROUGH': 'Боро',
+    'NEIGHBORHOOD': 'Район',
+    'BUILDING CLASS CATEGORY': 'Категория класса здания',
+    'TAX CLASS AT PRESENT': 'Налоговый класс (текущий)',
+    'BLOCK': 'Блок',
+    'LOT': 'Участок',
+    'EASE-MENT': 'Сервитут',
+    'BUILDING CLASS AT PRESENT': 'Класс здания (текущий)',
+    
+    # Адресная информация
+    'ADDRESS': 'Адрес',
+    'APARTMENT NUMBER': 'Номер квартиры',
+    'ZIP CODE': 'Почтовый индекс',
+    
+    # Характеристики здания
+    'RESIDENTIAL UNITS': 'Жилые единицы',
+    'COMMERCIAL UNITS': 'Коммерческие единицы',
+    'TOTAL UNITS': 'Всего единиц',
+    'LAND SQUARE FEET': 'Площадь земли (кв. фут)',
+    'GROSS SQUARE FEET': 'Общая площадь (кв. фут)',
+    'YEAR BUILT': 'Год постройки',
+    
+    # Информация о продаже
+    'TAX CLASS AT TIME OF SALE': 'Налоговый класс (на момент продажи)',
+    'BUILDING CLASS AT TIME OF SALE': 'Класс здания (на момент продажи)',
+    'SALE PRICE': 'Цена продажи',
+    'SALE DATE': 'Дата продажи',
+    
+    # Производные поля
+    'SALE_MONTH': 'Месяц продажи',
+    'PRICE_CATEGORY': 'Ценовая категория'
+}
+
+# Функция для перевода названий колонок
+def translate_columns(df):
+    """Переводит названия колонок DataFrame на русский язык"""
+    translated_cols = []
+    for col in df.columns:
+        translated_cols.append(COLUMN_TRANSLATIONS.get(col, col))
+    df.columns = translated_cols
+    return df
+
+# Функция для обратного перевода (для фильтров)
+def reverse_translate_column(russian_name):
+    """Возвращает оригинальное название колонки по русскому переводу"""
+    for eng, rus in COLUMN_TRANSLATIONS.items():
+        if rus == russian_name:
+            return eng
+    return russian_name
+
 # Загрузка данных
 @st.cache_data
 def load_data():
@@ -24,7 +78,6 @@ def load_data():
     data = pd.read_csv("nyc-rolling-sales.csv")
     
     # Преобразование типов данных
-    # Преобразуем числовые столбцы
     numeric_columns = ['SALE PRICE', 'LAND SQUARE FEET', 'GROSS SQUARE FEET', 
                        'YEAR BUILT', 'RESIDENTIAL UNITS', 'COMMERCIAL UNITS', 
                        'TOTAL UNITS', 'ZIP CODE']
@@ -52,27 +105,36 @@ df = load_data()
 st.sidebar.title("🏙️ NYC Property Sales Dashboard")
 page = st.sidebar.radio(
     "Навигация",
-    ["📊 Визуализация исходных данных", "🔍 Результаты анализа"]
+    ["📊 Визуализация исходных данных", "🔍 Результаты анализа", "📋 Таблица переводов"]
 )
 
 # Добавляем фильтры в сайдбар
 st.sidebar.markdown("---")
 st.sidebar.subheader("📌 Фильтры данных")
 
-# Фильтр по районе
+# Создаем копию с русскими названиями для фильтров
+df_russian = translate_columns(df.copy())
+
+# Фильтр по району
 neighborhoods = ['Все'] + sorted(df['NEIGHBORHOOD'].dropna().unique().tolist())
-selected_neighborhood = st.sidebar.selectbox("Район", neighborhoods)
+selected_neighborhood = st.sidebar.selectbox(
+    COLUMN_TRANSLATIONS.get('NEIGHBORHOOD', 'Район'), 
+    neighborhoods
+)
 
 # Фильтр по типу здания
 building_classes = ['Все'] + sorted(df['BUILDING CLASS CATEGORY'].dropna().unique().tolist())
-selected_building_class = st.sidebar.selectbox("Класс здания", building_classes)
+selected_building_class = st.sidebar.selectbox(
+    COLUMN_TRANSLATIONS.get('BUILDING CLASS CATEGORY', 'Категория класса здания'), 
+    building_classes
+)
 
 # Фильтр по году постройки
 if 'YEAR BUILT' in df.columns:
     min_year = int(df['YEAR BUILT'].min())
     max_year = int(df['YEAR BUILT'].max())
     year_range = st.sidebar.slider(
-        "Год постройки",
+        COLUMN_TRANSLATIONS.get('YEAR BUILT', 'Год постройки'),
         min_value=min_year,
         max_value=max_year,
         value=(min_year, max_year)
@@ -83,7 +145,7 @@ if 'SALE PRICE' in df.columns:
     min_price = float(df['SALE PRICE'].min())
     max_price = float(df['SALE PRICE'].max())
     price_range = st.sidebar.slider(
-        "Диапазон цен ($)",
+        COLUMN_TRANSLATIONS.get('SALE PRICE', 'Цена продажи') + " ($)",
         min_value=float(min_price),
         max_value=float(max_price),
         value=(float(min_price), float(max_price))
@@ -110,8 +172,35 @@ if 'SALE PRICE' in df.columns:
         (filtered_df['SALE PRICE'] <= price_range[1])
     ]
 
+# Создаем DataFrame с русскими названиями для отображения
+filtered_df_russian = translate_columns(filtered_df.copy())
+
+# Страница 3: Таблица переводов
+if page == "📋 Таблица переводов":
+    st.title("📋 Таблица переводов названий колонок")
+    
+    # Создаем таблицу с переводами
+    translation_table = pd.DataFrame({
+        'Оригинальное название (англ.)': list(COLUMN_TRANSLATIONS.keys()),
+        'Перевод (рус.)': list(COLUMN_TRANSLATIONS.values())
+    })
+    
+    st.dataframe(
+        translation_table,
+        use_container_width=True,
+        height=600
+    )
+    
+    st.markdown("---")
+    st.info("""
+    **Примечание:**  
+    - Все графики и таблицы в дашборде используют русские названия колонок  
+    - Фильтры также используют русские названия  
+    - При экспорте данных используются оригинальные английские названия колонок
+    """)
+
 # Страница 1: Визуализация исходных данных
-if page == "📊 Визуализация исходных данных":
+elif page == "📊 Визуализация исходных данных":
     st.title("📊 Визуализация исходных данных")
     
     # KPI карточки
@@ -139,13 +228,19 @@ if page == "📊 Визуализация исходных данных":
     # Таблица с данными
     st.subheader("📋 Просмотр данных")
     
-    # Выбор колонок для отображения
-    all_columns = filtered_df.columns.tolist()
-    selected_columns = st.multiselect(
+    # Выбор колонок для отображения (используем русские названия)
+    all_columns_russian = filtered_df_russian.columns.tolist()
+    selected_columns_russian = st.multiselect(
         "Выберите колонки для отображения:",
-        all_columns,
-        default=all_columns[:10] if len(all_columns) > 10 else all_columns
+        all_columns_russian,
+        default=all_columns_russian[:10] if len(all_columns_russian) > 10 else all_columns_russian
     )
+    
+    # Преобразуем выбранные русские названия обратно в английские для фильтрации
+    selected_columns_english = []
+    for rus_col in selected_columns_russian:
+        eng_col = reverse_translate_column(rus_col)
+        selected_columns_english.append(eng_col if eng_col in filtered_df.columns else rus_col)
     
     # Пагинация
     page_size = st.selectbox("Строк на странице:", [10, 25, 50, 100])
@@ -154,15 +249,22 @@ if page == "📊 Визуализация исходных данных":
     start_idx = (page_number - 1) * page_size
     end_idx = start_idx + page_size
     
-    if selected_columns:
+    if selected_columns_russian:
+        # Отображаем таблицу с русскими названиями колонок
+        display_df = filtered_df_russian[selected_columns_russian].iloc[start_idx:end_idx]
         st.dataframe(
-            filtered_df[selected_columns].iloc[start_idx:end_idx],
+            display_df,
             use_container_width=True,
             height=400
         )
     
-    # Экспорт данных
-    csv = filtered_df.to_csv(index=False).encode('utf-8')
+    # Экспорт данных (используем оригинальные английские названия)
+    if selected_columns_english:
+        export_df = filtered_df[selected_columns_english]
+    else:
+        export_df = filtered_df
+    
+    csv = export_df.to_csv(index=False).encode('utf-8')
     st.download_button(
         label="📥 Скачать отфильтрованные данные (CSV)",
         data=csv,
@@ -176,11 +278,16 @@ if page == "📊 Визуализация исходных данных":
     st.subheader("📈 Базовая статистика")
     
     if st.checkbox("Показать статистики по числовым колонкам"):
-        numeric_cols = filtered_df.select_dtypes(include=[np.number]).columns.tolist()
-        if numeric_cols:
-            stats_df = filtered_df[numeric_cols].describe().T
+        numeric_cols_english = filtered_df.select_dtypes(include=[np.number]).columns.tolist()
+        if numeric_cols_english:
+            # Преобразуем английские названия в русские для отображения
+            numeric_cols_russian = [COLUMN_TRANSLATIONS.get(col, col) for col in numeric_cols_english]
+            
+            stats_df = filtered_df[numeric_cols_english].describe().T
             stats_df = stats_df[['count', 'mean', 'std', 'min', '25%', '50%', '75%', 'max']]
             stats_df.columns = ['Кол-во', 'Среднее', 'Стд. откл.', 'Мин.', '25%', 'Медиана', '75%', 'Макс.']
+            stats_df.index = numeric_cols_russian
+            
             st.dataframe(stats_df.style.format("{:,.2f}"), use_container_width=True)
     
     st.markdown("---")
@@ -200,11 +307,11 @@ if page == "📊 Визуализация исходных данных":
     with col1:
         if viz_type == "Распределение цен" and 'SALE PRICE' in filtered_df.columns:
             fig = px.histogram(
-                filtered_df, 
-                x='SALE PRICE',
+                filtered_df_russian, 
+                x=COLUMN_TRANSLATIONS.get('SALE PRICE', 'Цена продажи'),
                 nbins=50,
                 title="Распределение цен на недвижимость",
-                labels={'SALE PRICE': 'Цена продажи ($)'}
+                labels={COLUMN_TRANSLATIONS.get('SALE PRICE', 'Цена продажи'): 'Цена продажи ($)'}
             )
             fig.update_layout(xaxis_tickformat=',')
             st.plotly_chart(fig, use_container_width=True)
@@ -215,26 +322,33 @@ if page == "📊 Визуализация исходных данных":
                 x=top_neighborhoods.index,
                 y=top_neighborhoods.values,
                 title="Топ 15 районов по количеству продаж",
-                labels={'x': 'Район', 'y': 'Количество продаж'}
+                labels={'x': COLUMN_TRANSLATIONS.get('NEIGHBORHOOD', 'Район'), 
+                       'y': 'Количество продаж'}
             )
             fig.update_xaxes(tickangle=45)
             st.plotly_chart(fig, use_container_width=True)
             
         elif viz_type == "Распределение по году постройки" and 'YEAR BUILT' in filtered_df.columns:
             fig = px.histogram(
-                filtered_df,
-                x='YEAR BUILT',
+                filtered_df_russian,
+                x=COLUMN_TRANSLATIONS.get('YEAR BUILT', 'Год постройки'),
                 nbins=30,
                 title="Распределение по году постройки",
-                labels={'YEAR BUILT': 'Год постройки'}
+                labels={COLUMN_TRANSLATIONS.get('YEAR BUILT', 'Год постройки'): 'Год постройки'}
             )
             st.plotly_chart(fig, use_container_width=True)
     
     with col2:
         if viz_type == "Корреляционная матрица":
-            numeric_cols = filtered_df.select_dtypes(include=[np.number]).columns.tolist()
-            if len(numeric_cols) > 1:
-                corr_matrix = filtered_df[numeric_cols].corr()
+            numeric_cols_english = filtered_df.select_dtypes(include=[np.number]).columns.tolist()
+            if len(numeric_cols_english) > 1:
+                corr_matrix = filtered_df[numeric_cols_english].corr()
+                
+                # Переводим названия колонок для отображения
+                numeric_cols_russian = [COLUMN_TRANSLATIONS.get(col, col) for col in numeric_cols_english]
+                corr_matrix.index = numeric_cols_russian
+                corr_matrix.columns = numeric_cols_russian
+                
                 fig = px.imshow(
                     corr_matrix,
                     text_auto='.2f',
@@ -248,12 +362,15 @@ if page == "📊 Визуализация исходных данных":
         elif viz_type == "Scatter plot: Цена vs Площадь":
             if 'SALE PRICE' in filtered_df.columns and 'GROSS SQUARE FEET' in filtered_df.columns:
                 fig = px.scatter(
-                    filtered_df,
-                    x='GROSS SQUARE FEET',
-                    y='SALE PRICE',
-                    color='NEIGHBORHOOD',
+                    filtered_df_russian,
+                    x=COLUMN_TRANSLATIONS.get('GROSS SQUARE FEET', 'Общая площадь (кв. фут)'),
+                    y=COLUMN_TRANSLATIONS.get('SALE PRICE', 'Цена продажи'),
+                    color=COLUMN_TRANSLATIONS.get('NEIGHBORHOOD', 'Район'),
                     title="Цена vs Общая площадь",
-                    labels={'GROSS SQUARE FEET': 'Общая площадь (кв. фут)', 'SALE PRICE': 'Цена продажи ($)'},
+                    labels={
+                        COLUMN_TRANSLATIONS.get('GROSS SQUARE FEET', 'Общая площадь (кв. фут)'): 'Общая площадь (кв. фут)',
+                        COLUMN_TRANSLATIONS.get('SALE PRICE', 'Цена продажи'): 'Цена продажи ($)'
+                    },
                     opacity=0.6
                 )
                 fig.update_layout(xaxis_tickformat=',', yaxis_tickformat=',')
@@ -263,16 +380,24 @@ if page == "📊 Визуализация исходных данных":
     st.markdown("---")
     st.subheader("📊 Категориальный анализ")
     
-    cat_col = st.selectbox(
+    cat_col_options = {
+        'BOROUGH': COLUMN_TRANSLATIONS.get('BOROUGH', 'Боро'),
+        'TAX CLASS AT PRESENT': COLUMN_TRANSLATIONS.get('TAX CLASS AT PRESENT', 'Налоговый класс (текущий)'),
+        'BUILDING CLASS CATEGORY': COLUMN_TRANSLATIONS.get('BUILDING CLASS CATEGORY', 'Категория класса здания')
+    }
+    
+    cat_col_english = st.selectbox(
         "Выберите категориальную переменную:",
-        ['BOROUGH', 'TAX CLASS AT PRESENT', 'BUILDING CLASS CATEGORY']
+        list(cat_col_options.keys()),
+        format_func=lambda x: cat_col_options[x]
     )
     
-    if cat_col in filtered_df.columns:
+    if cat_col_english in filtered_df.columns:
+        cat_col_russian = COLUMN_TRANSLATIONS.get(cat_col_english, cat_col_english)
         fig = px.pie(
-            filtered_df,
-            names=cat_col,
-            title=f"Распределение по {cat_col}",
+            filtered_df_russian,
+            names=cat_col_russian,
+            title=f"Распределение по {cat_col_russian.lower()}",
             hole=0.3
         )
         st.plotly_chart(fig, use_container_width=True)
@@ -315,6 +440,7 @@ else:
     # Анализ по месяцам (если есть дата)
     if 'SALE DATE' in filtered_df.columns:
         filtered_df['SALE_MONTH'] = filtered_df['SALE DATE'].dt.to_period('M').astype(str)
+        filtered_df_russian['Месяц продажи'] = filtered_df['SALE_MONTH']
         
         monthly_sales = filtered_df.groupby('SALE_MONTH').agg({
             'SALE PRICE': ['count', 'mean', 'median']
@@ -357,7 +483,13 @@ else:
             'SALE PRICE': ['count', 'mean', 'median', 'std']
         }).round(2).reset_index()
         
-        neighborhood_stats.columns = ['Район', 'Количество продаж', 'Средняя цена', 'Медианная цена', 'Стд. отклонение']
+        neighborhood_stats.columns = [
+            COLUMN_TRANSLATIONS.get('NEIGHBORHOOD', 'Район'), 
+            'Количество продаж', 
+            'Средняя цена', 
+            'Медианная цена', 
+            'Стд. отклонение'
+        ]
         
         # Сортировка
         sort_by = st.selectbox(
@@ -374,7 +506,7 @@ else:
         with col1:
             fig = px.bar(
                 neighborhood_stats_sorted,
-                x='Район',
+                x=COLUMN_TRANSLATIONS.get('NEIGHBORHOOD', 'Район'),
                 y=sort_by,
                 title=f"Топ {top_n} районов по {sort_by.lower()}",
                 color=sort_by,
@@ -412,6 +544,8 @@ else:
             labels=price_labels,
             include_lowest=True
         )
+        
+        filtered_df_russian['Ценовая категория'] = filtered_df['PRICE_CATEGORY']
         
         price_dist = filtered_df['PRICE_CATEGORY'].value_counts().sort_index()
         
@@ -515,6 +649,8 @@ st.sidebar.info(
     **NYC Property Sales Dashboard**  
     Анализ данных о продажах недвижимости в Нью-Йорке.  
     Данные: NYC Rolling Sales Dataset
+    
+    **📋 Таблица переводов доступна в навигации**
     """
 )
 
