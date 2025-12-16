@@ -276,6 +276,76 @@ elif page == "Визуализация данных":
     with col4:
         unique_neighborhoods = filtered_df['NEIGHBORHOOD'].nunique()
         st.metric("Количество районов", unique_neighborhoods)
+
+
+    st.markdown("---")
+    
+    # Таблица с данными
+    st.subheader("Просмотр данных")
+    
+    # Выбор колонок для отображения (используем русские названия)
+    all_columns_russian = filtered_df_russian.columns.tolist()
+    selected_columns_russian = st.multiselect(
+        "Выберите колонки для отображения:",
+        all_columns_russian,
+        default=all_columns_russian[:10] if len(all_columns_russian) > 10 else all_columns_russian
+    )
+    
+    # Преобразуем выбранные русские названия обратно в английские для фильтрации
+    selected_columns_english = []
+    for rus_col in selected_columns_russian:
+        eng_col = reverse_translate_column(rus_col)
+        selected_columns_english.append(eng_col if eng_col in filtered_df.columns else rus_col)
+    
+    # Пагинация
+    page_size = st.selectbox("Строк на странице:", [10, 25, 50, 100])
+    page_number = st.number_input("Номер страницы:", min_value=1, value=1)
+    
+    start_idx = (page_number - 1) * page_size
+    end_idx = start_idx + page_size
+    
+    if selected_columns_russian:
+        # Отображаем таблицу с русскими названиями колонок
+        display_df = filtered_df_russian[selected_columns_russian].iloc[start_idx:end_idx]
+        st.dataframe(
+            display_df,
+            use_container_width=True,
+            height=400
+        )
+    
+    # Экспорт данных (используем оригинальные английские названия)
+    if selected_columns_english:
+        export_df = filtered_df[selected_columns_english]
+    else:
+        export_df = filtered_df
+    
+    csv = export_df.to_csv(index=False).encode('utf-8')
+    st.download_button(
+        label="📥 Скачать отфильтрованные данные (CSV)",
+        data=csv,
+        file_name="filtered_nyc_property_sales.csv",
+        mime="text/csv",
+    )
+    
+    st.markdown("---")
+    
+    # Базовые статистики
+    st.subheader("Базовая статистика")
+    
+    if st.checkbox("Показать статистики по числовым колонкам"):
+        numeric_cols_english = filtered_df.select_dtypes(include=[np.number]).columns.tolist()
+        if numeric_cols_english:
+            # Преобразуем английские названия в русские для отображения
+            numeric_cols_russian = [COLUMN_TRANSLATIONS.get(col, col) for col in numeric_cols_english]
+            
+            stats_df = filtered_df[numeric_cols_english].describe().T
+            stats_df = stats_df[['count', 'mean', 'std', 'min', '25%', '50%', '75%', 'max']]
+            stats_df.columns = ['Кол-во', 'Среднее', 'Стд. откл.', 'Мин.', '25%', 'Медиана', '75%', 'Макс.']
+            stats_df.index = numeric_cols_russian
+            
+            st.dataframe(stats_df.style.format("{:,.2f}"), use_container_width=True)
+    
+    st.markdown("---")
     
     st.markdown("---")
     
