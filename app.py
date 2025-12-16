@@ -6,6 +6,7 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import seaborn as sns
 import matplotlib.pyplot as plt
+from scipy import stats
 from datetime import datetime
 import io
 
@@ -55,16 +56,14 @@ COLUMN_TRANSLATIONS = {
 
 # Функция для перевода названий колонок
 def translate_columns(df):
-    # Переводит названия колонок DataFrame на русский язык
     translated_cols = []
     for col in df.columns:
         translated_cols.append(COLUMN_TRANSLATIONS.get(col, col))
     df.columns = translated_cols
     return df
 
-# Функция для обратного перевода (для фильтров)
+# Функция для обратного перевода
 def reverse_translate_column(russian_name):
-    # Возвращает оригинальное название колонки по русскому переводу
     for eng, rus in COLUMN_TRANSLATIONS.items():
         if rus == russian_name:
             return eng
@@ -73,29 +72,23 @@ def reverse_translate_column(russian_name):
 # Загрузка данных
 @st.cache_data
 def load_data():
-    # Читаем данные из строкового буфера
     data = pd.read_csv("nyc-rolling-sales.csv")
     
-    # Преобразование типов данных в числовые форматы  
     numeric_columns = ['SALE PRICE', 'LAND SQUARE FEET', 'GROSS SQUARE FEET', 
                        'YEAR BUILT', 'RESIDENTIAL UNITS', 'COMMERCIAL UNITS', 
                        'TOTAL UNITS', 'ZIP CODE']
     
     for col in numeric_columns:
         if col in data.columns:
-            # Заменяем нечисловые значения и преобразуем
             data[col] = pd.to_numeric(data[col].replace(' -  ', np.nan).replace(' - ', np.nan).replace(' -', np.nan), errors='coerce')
     
-    # Преобразуем дату
     if 'SALE DATE' in data.columns:
         data['SALE DATE'] = pd.to_datetime(data['SALE DATE'], errors='coerce')
     
-    # Очистка цены продажи
+    # Очистка данных
     if 'SALE PRICE' in data.columns:
-        # Удаляем строки с некорректными ценами
         data = data[data['SALE PRICE'] > 0]
     
-    # Очистка года постройки - удаляем некорректные значения (<= 0 или слишком старые)
     if 'YEAR BUILT' in data.columns:
         data = data[data['YEAR BUILT'] > 0]
     
@@ -108,7 +101,7 @@ df = load_data()
 st.sidebar.title("NYC Property Sales Dashboard")
 page = st.sidebar.radio(
     "Навигация",
-    ["Визуализация исходных данных", "Результаты анализа", "Таблица переводов"]
+    ["Визуализация исходных данных", "Результаты анализа", "Анализ выбросов", "Таблица переводов"]
 )
 
 # Добавляем фильтры в сайдбар
@@ -132,16 +125,13 @@ selected_building_class = st.sidebar.selectbox(
     building_classes
 )
 
-# Фильтр по году постройки (ИСПРАВЛЕНО)
+# Фильтр по году постройки
 if 'YEAR BUILT' in df.columns:
-    # Фильтруем только корректные годы (> 0)
     valid_years = df[df['YEAR BUILT'] > 0]['YEAR BUILT']
     
     if not valid_years.empty:
         min_year = int(valid_years.min())
         max_year = int(valid_years.max())
-        
-        # Проверяем, что минимальный год разумен (не раньше 1700)
         min_year = max(min_year, 1700)
         
         year_range = st.sidebar.slider(
@@ -153,10 +143,11 @@ if 'YEAR BUILT' in df.columns:
         
         # Показываем информацию о корректных данных
         total_records = len(df)
-        valid_year_records = len(df[df['YEAR BUILT'] > 0])        
+        valid_year_records = len(df[df['YEAR BUILT'] > 0])
+        st.sidebar.caption(f"Корректных данных о годе постройки: {valid_year_records}/{total_records}")
     else:
-        # Если нет корректных данных о годе постройки
-        year_range = (1800, 2023)  # Значения по умолчанию для Нью-Йорка        
+        year_range = (1800, 2023)
+        st.sidebar.warning("Нет корректных данных о годе постройки")
 
 # Фильтр по цене
 if 'SALE PRICE' in df.columns:
@@ -193,26 +184,8 @@ if 'SALE PRICE' in df.columns:
 # Создаем DataFrame с русскими названиями для отображения
 filtered_df_russian = translate_columns(filtered_df.copy())
 
-# Страница 3: Таблица переводов
-if page == "Таблица переводов":
-    st.title("Таблица переводов названий колонок")
-    
-    # Создаем таблицу с переводами
-    translation_table = pd.DataFrame({
-        'Оригинальное название (англ.)': list(COLUMN_TRANSLATIONS.keys()),
-        'Перевод (рус.)': list(COLUMN_TRANSLATIONS.values())
-    })
-    
-    st.dataframe(
-        translation_table,
-        use_container_width=True,
-        height=600
-    )
-    
-    st.markdown("---")
-
 # Страница 1: Визуализация исходных данных
-elif page == "Визуализация исходных данных":
+if page == "Визуализация исходных данных":
     st.title("Визуализация исходных данных")
     
     # KPI карточки
@@ -228,7 +201,6 @@ elif page == "Визуализация исходных данных":
     
     with col3:
         if 'YEAR BUILT' in filtered_df.columns:
-            # Используем только корректные годы для расчета среднего
             valid_years_filtered = filtered_df[filtered_df['YEAR BUILT'] > 0]['YEAR BUILT']
             if not valid_years_filtered.empty:
                 avg_year = valid_years_filtered.mean()
@@ -316,7 +288,8 @@ elif page == "Визуализация исходных данных":
     viz_type = st.selectbox(
         "Выберите тип визуализации:",
         ["Распределение цен", "Распределение по районам", "Распределение по году постройки", 
-         "Корреляционная матрица", "Scatter plot: Цена vs Площадь"]
+         "Корреляционная матрица", "Scatter plot: Цена vs Площадь", 
+         "Распределение районов по округам"]
     )
     
     col1, col2 = st.columns(2)
@@ -360,6 +333,48 @@ elif page == "Визуализация исходных данных":
                 st.plotly_chart(fig, use_container_width=True)
             else:
                 st.warning("Нет корректных данных о годе постройки для визуализации")
+        
+        elif viz_type == "Распределение районов по округам":
+            if 'BOROUGH' in filtered_df.columns and 'NEIGHBORHOOD' in filtered_df.columns:
+                # Подсчет уникальных районов по Borough
+                borough_neighborhood_count = filtered_df.groupby('BOROUGH')['NEIGHBORHOOD'].nunique().reset_index()
+                borough_neighborhood_count.columns = ['BOROUGH', 'Количество районов']
+                
+                # Переводим номера Borough в названия
+                borough_neighborhood_count['Городской округ'] = borough_neighborhood_count['BOROUGH'].map({
+                    1: 'Manhattan',
+                    2: 'Brooklyn', 
+                    3: 'Queens',
+                    4: 'Bronx',
+                    5: 'Staten Island'
+                })
+                
+                fig = px.bar(
+                    borough_neighborhood_count,
+                    x='Городской округ',
+                    y='Количество районов',
+                    title='Количество уникальных районов по городским округам',
+                    text='Количество районов',
+                    color='Количество районов',
+                    color_continuous_scale='Plasma'
+                )
+                fig.update_layout(xaxis_tickangle=45)
+                st.plotly_chart(fig, use_container_width=True)
+                
+                # Дополнительная статистика
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    st.metric(
+                        "Всего уникальных районов", 
+                        filtered_df['NEIGHBORHOOD'].nunique()
+                    )
+                
+                with col2:
+                    st.metric(
+                        "Среднее районов на округ", 
+                        f"{filtered_df.groupby('BOROUGH')['NEIGHBORHOOD'].nunique().mean():.1f}"
+                    )
     
     with col2:
         if viz_type == "Корреляционная матрица":
@@ -426,7 +441,7 @@ elif page == "Визуализация исходных данных":
         st.plotly_chart(fig, use_container_width=True)
 
 # Страница 2: Результаты анализа
-else:
+elif page == "Результаты анализа":
     st.title("Результаты анализа")
     
     # Информация о выбранных данных
@@ -563,6 +578,167 @@ else:
     
     st.markdown("---")
     
+    # Анализ распределения районов по округам
+    st.subheader("Распределение районов по городским округам")
+    
+    if 'BOROUGH' in filtered_df.columns and 'NEIGHBORHOOD' in filtered_df.columns:
+        # Создаем словарь для перевода номеров Borough в названия
+        borough_names = {
+            1: 'Manhattan',
+            2: 'Brooklyn', 
+            3: 'Queens',
+            4: 'Bronx',
+            5: 'Staten Island'
+        }
+        
+        # Группируем данные по Borough и считаем уникальные районы
+        borough_neighborhood_stats = filtered_df.groupby('BOROUGH').agg({
+            'NEIGHBORHOOD': ['nunique', 'count']
+        }).reset_index()
+        
+        borough_neighborhood_stats.columns = ['Borough ID', 'Количество районов', 'Всего записей']
+        
+        # Добавляем названия Borough
+        borough_neighborhood_stats['Городской округ'] = borough_neighborhood_stats['Borough ID'].map(borough_names)
+        
+        # Сортируем по количеству районов
+        borough_neighborhood_stats = borough_neighborhood_stats.sort_values('Количество районов', ascending=False)
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            # Столбчатая диаграмма
+            fig = px.bar(
+                borough_neighborhood_stats,
+                x='Городской округ',
+                y='Количество районов',
+                title='Количество районов по городским округам',
+                color='Количество районов',
+                color_continuous_scale='Viridis',
+                text='Количество районов'
+            )
+            fig.update_layout(xaxis_tickangle=45)
+            st.plotly_chart(fig, use_container_width=True)
+        
+        with col2:
+            # Круговая диаграмма
+            fig = px.pie(
+                borough_neighborhood_stats,
+                values='Количество районов',
+                names='Городской округ',
+                title='Доля районов по округам',
+                hole=0.3
+            )
+            st.plotly_chart(fig, use_container_width=True)
+        
+        # Таблица со статистикой
+        st.dataframe(
+            borough_neighborhood_stats[['Городской округ', 'Количество районов', 'Всего записей']].style.format({
+                'Количество районов': '{:,.0f}',
+                'Всего записей': '{:,.0f}'
+            }),
+            use_container_width=True,
+            height=200
+        )
+        
+        # Инсайты
+        st.markdown("**Инсайты:**")
+        
+        # Находим округ с наибольшим количеством районов
+        max_neighborhoods = borough_neighborhood_stats.loc[borough_neighborhood_stats['Количество районов'].idxmax()]
+        min_neighborhoods = borough_neighborhood_stats.loc[borough_neighborhood_stats['Количество районов'].idxmin()]
+        
+        st.write(f"• **{max_neighborhoods['Городской округ']}** имеет наибольшее количество районов ({max_neighborhoods['Количество районов']})")
+        st.write(f"• **{min_neighborhoods['Городской округ']}** имеет наименьшее количество районов ({min_neighborhoods['Количество районов']})")
+        
+        # Вычисляем среднее количество записей на район
+        avg_records_per_neighborhood = borough_neighborhood_stats['Всего записей'].sum() / borough_neighborhood_stats['Количество районов'].sum()
+        st.write(f"• В среднем на один район приходится {avg_records_per_neighborhood:.1f} записей о продажах")
+    
+    st.markdown("---")
+    
+    # Интерактивная карта районов по округам
+    st.subheader("Исследование районов по городским округам")
+    
+    if 'BOROUGH' in filtered_df.columns and 'NEIGHBORHOOD' in filtered_df.columns:
+        # Выбор Borough для детального анализа
+        selected_borough_name = st.selectbox(
+            "Выберите городской округ для детального анализа:",
+            list(borough_names.values())
+        )
+        
+        # Получаем ID выбранного Borough
+        selected_borough_id = [k for k, v in borough_names.items() if v == selected_borough_name][0]
+        
+        # Фильтруем данные по выбранному Borough
+        borough_data = filtered_df[filtered_df['BOROUGH'] == selected_borough_id]
+        
+        if not borough_data.empty:
+            col1, col2, col3 = st.columns(3)
+            
+            with col1:
+                neighborhoods_count = borough_data['NEIGHBORHOOD'].nunique()
+                st.metric("Количество районов", neighborhoods_count)
+            
+            with col2:
+                total_sales = len(borough_data)
+                st.metric("Всего продаж", f"{total_sales:,.0f}")
+            
+            with col3:
+                if 'SALE PRICE' in borough_data.columns:
+                    avg_price = borough_data['SALE PRICE'].mean()
+                    st.metric("Средняя цена ($)", f"{avg_price:,.0f}")
+            
+            # Топ районов по количеству продаж в выбранном Borough
+            top_neighborhoods = borough_data['NEIGHBORHOOD'].value_counts().head(10)
+            
+            fig = px.bar(
+                x=top_neighborhoods.index,
+                y=top_neighborhoods.values,
+                title=f"Топ 10 районов в {selected_borough_name} по количеству продаж",
+                labels={'x': 'Район', 'y': 'Количество продаж'},
+                color=top_neighborhoods.values,
+                color_continuous_scale='Blues'
+            )
+            fig.update_xaxes(tickangle=45)
+            st.plotly_chart(fig, use_container_width=True)
+            
+            # Детальная таблица по районам Borough
+            neighborhood_details = borough_data.groupby('NEIGHBORHOOD').agg({
+                'SALE PRICE': ['count', 'mean', 'median', 'min', 'max']
+            }).round(2).reset_index()
+            
+            neighborhood_details.columns = [
+                'Район', 
+                'Количество продаж', 
+                'Средняя цена', 
+                'Медианная цена',
+                'Минимальная цена',
+                'Максимальная цена'
+            ]
+            
+            neighborhood_details = neighborhood_details.sort_values('Количество продаж', ascending=False)
+            
+            # Пагинация для таблицы
+            neighborhoods_page_size = st.selectbox("Районов на странице:", [10, 20, 50], key='neighborhoods_page')
+            neighborhoods_page_number = st.number_input("Номер страницы:", min_value=1, value=1, key='neighborhoods_page_num')
+            
+            start_idx = (neighborhoods_page_number - 1) * neighborhoods_page_size
+            end_idx = start_idx + neighborhoods_page_size
+            
+            st.dataframe(
+                neighborhood_details.iloc[start_idx:end_idx].style.format({
+                    'Средняя цена': '${:,.0f}',
+                    'Медианная цена': '${:,.0f}',
+                    'Минимальная цена': '${:,.0f}',
+                    'Максимальная цена': '${:,.0f}'
+                }),
+                use_container_width=True,
+                height=400
+            )
+    
+    st.markdown("---")
+    
     # Анализ ценовых сегментов
     st.subheader("Анализ ценовых сегментов")
     
@@ -612,69 +788,4 @@ else:
             
             st.dataframe(
                 category_stats.style.format({
-                    'Средняя цена': '{:,.0f}',
-                    'Медианная цена': '{:,.0f}',
-                    'Средняя площадь': '{:,.0f}',
-                    'Цена за кв.фут': '{:.2f}'
-                }),
-                use_container_width=True,
-                height=300
-            )
-    
-    st.markdown("---")
-    
-    # Инсайты
-    st.subheader("Ключевые инсайты")
-    
-    insight_col1, insight_col2 = st.columns(2)
-    
-    with insight_col1:
-        st.markdown("##### Основные наблюдения:")
-        
-        if 'SALE PRICE' in filtered_df.columns:
-            # Самый дорогой район
-            if 'NEIGHBORHOOD' in filtered_df.columns:
-                most_expensive = filtered_df.groupby('NEIGHBORHOOD')['SALE PRICE'].mean().idxmax()
-                most_expensive_price = filtered_df.groupby('NEIGHBORHOOD')['SALE PRICE'].mean().max()
-                st.write(f"**Самый дорогой район**: {most_expensive} (средняя цена: ${most_expensive_price:,.0f})")
-            
-            # Динамика цен
-            if 'SALE DATE' in filtered_df.columns:
-                recent_prices = filtered_df[filtered_df['SALE DATE'] > '2017-01-01']['SALE PRICE'].mean()
-                older_prices = filtered_df[filtered_df['SALE DATE'] < '2017-01-01']['SALE PRICE'].mean()
-                if older_prices > 0:
-                    price_change = ((recent_prices - older_prices) / older_prices) * 100
-                    st.write(f"**Изменение цен**: {price_change:+.1f}% с начала 2017 года")
-    
-    # Дополнительные опции анализа
-    st.markdown("---")
-    st.subheader("Дополнительные опции анализа")
-    
-    if st.button("Запустить углубленный анализ"):
-        with st.spinner("Выполняется анализ..."):
-            # Здесь можно добавить более сложный анализ
-            st.success("Анализ завершен!")
-            
-            # Пример дополнительного анализа
-            if 'SALE PRICE' in filtered_df.columns and 'GROSS SQUARE FEET' in filtered_df.columns:
-                # Фильтруем только корректные данные
-                valid_corr_data = filtered_df[(filtered_df['SALE PRICE'] > 0) & (filtered_df['GROSS SQUARE FEET'] > 0)]
-                if not valid_corr_data.empty:
-                    correlation = valid_corr_data['SALE PRICE'].corr(valid_corr_data['GROSS SQUARE FEET'])
-                    st.write(f"**Корреляция цена-площадь**: {correlation:.3f}")
-                    
-                    if correlation > 0.7:
-                        st.info("Сильная положительная корреляция: цена сильно зависит от площади")
-                    elif correlation > 0.3:
-                        st.warning("Умеренная корреляция: площадь влияет на цену, но есть другие факторы")
-                    else:
-                        st.info("Слабая корреляция: цена мало зависит от площади")
-                else:
-                    st.warning("Недостаточно данных для анализа корреляции")
-
-# Информация в футере
-st.sidebar.markdown("---")
-
-# Добавляем возможность сброса фильтров
-# if st.sidebar.button("Сбросить все фильтры"):
-#     st.rerun()
+                    'Средняя
