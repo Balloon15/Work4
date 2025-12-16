@@ -153,12 +153,10 @@ if 'YEAR BUILT' in df.columns:
         
         # Показываем информацию о корректных данных
         total_records = len(df)
-        valid_year_records = len(df[df['YEAR BUILT'] > 0])
-        st.sidebar.caption(f"Корректных данных о годе постройки: {valid_year_records}/{total_records}")
+        valid_year_records = len(df[df['YEAR BUILT'] > 0])        
     else:
         # Если нет корректных данных о годе постройки
-        year_range = (1800, 2023)  # Значения по умолчанию для Нью-Йорка
-        st.sidebar.warning("Нет корректных данных о годе постройки")
+        year_range = (1800, 2023)  # Значения по умолчанию для Нью-Йорка        
 
 # Фильтр по цене
 if 'SALE PRICE' in df.columns:
@@ -678,5 +676,5 @@ else:
 st.sidebar.markdown("---")
 
 # Добавляем возможность сброса фильтров
-if st.sidebar.button("Сбросить все фильтры"):
-    st.rerun()
+# if st.sidebar.button("Сбросить все фильтры"):
+#     st.rerun()
