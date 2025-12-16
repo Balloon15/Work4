@@ -760,4 +760,291 @@ else:
                     y='PRICE_PER_SQFT',
                     trendline="lowess",
                     title='Зависимость цены за кв.фут от возраста здания',
-                    labels={'BU
+                    labels={'BUILDING_AGE': 'Возраст здания (лет)', 'PRICE_PER_SQFT': 'Цена за кв.фут ($)'},
+                    opacity=0.6
+                )
+                st.plotly_chart(fig, use_container_width=True)
+            
+            # Анализ ROI по типам зданий
+            st.subheader("Доходность по типам недвижимости")
+            
+            if 'BUILDING CLASS CATEGORY' in filtered_df.columns:
+                roi_analysis = filtered_df.groupby('BUILDING CLASS CATEGORY').agg({
+                    'PRICE_PER_SQFT': 'mean',
+                    'PRICE_PER_UNIT': 'mean',
+                    'SALE PRICE': ['count', 'median']
+                }).round(2)
+                
+                roi_analysis.columns = ['Цена за кв.фут', 'Цена за единицу', 'Количество продаж', 'Медианная цена']
+                roi_analysis = roi_analysis.sort_values('Цена за кв.фут', ascending=False).head(15)
+                
+                fig = px.scatter(
+                    roi_analysis.reset_index(),
+                    x='Цена за кв.фут',
+                    y='Цена за единицу',
+                    size='Количество продаж',
+                    color='Медианная цена',
+                    hover_name='BUILDING CLASS CATEGORY',
+                    title='Доходность по типам недвижимости',
+                    size_max=50
+                )
+                fig.update_layout(xaxis_tickformat='$,.2f', yaxis_tickformat='$,.0f')
+                st.plotly_chart(fig, use_container_width=True)
+    
+    # Секция 5: Анализ спроса и предложения
+    elif analysis_section == "⚖️ Анализ спроса и предложения":
+        st.subheader("Анализ спроса и предложения")
+        
+        # Анализ предложения по размерам
+        if 'GROSS SQUARE FEET' in filtered_df.columns:
+            # Создание категорий по площади
+            size_bins = [0, 500, 1000, 1500, 2000, 3000, 5000, 10000, float('inf')]
+            size_labels = ['<500 кв.фут', '500-1000', '1000-1500', '1500-2000', 
+                          '2000-3000', '3000-5000', '5000-10000', '>10000']
+            
+            filtered_df['SIZE_CATEGORY'] = pd.cut(filtered_df['GROSS SQUARE FEET'], 
+                                                  bins=size_bins, 
+                                                  labels=size_labels)
+            
+            size_analysis = filtered_df.groupby('SIZE_CATEGORY').agg({
+                'SALE PRICE': ['count', 'mean', 'median'],
+                'PRICE_PER_SQFT': 'mean'
+            }).round(2)
+            
+            size_analysis.columns = ['Количество', 'Средняя цена', 'Медианная цена', 'Цена за кв.фут']
+            
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                fig = px.bar(
+                    size_analysis.reset_index(),
+                    x='SIZE_CATEGORY',
+                    y='Количество',
+                    title='Распределение предложения по размерам',
+                    color='Средняя цена',
+                    text='Количество'
+                )
+                fig.update_traces(texttemplate='%{text:,}', textposition='outside')
+                fig.update_xaxes(tickangle=45)
+                st.plotly_chart(fig, use_container_width=True)
+            
+            with col2:
+                fig = px.line(
+                    size_analysis.reset_index(),
+                    x='SIZE_CATEGORY',
+                    y='Цена за кв.фут',
+                    title='Стоимость квадратного фута по размерам',
+                    markers=True
+                )
+                fig.update_xaxes(tickangle=45)
+                st.plotly_chart(fig, use_container_width=True)
+            
+            # Анализ ликвидности
+            st.subheader("Анализ ликвидности рынка")
+            
+            if 'SALE DATE' in filtered_df.columns:
+                # Ежемесячные объемы продаж
+                monthly_volume = filtered_df.groupby('SALE_MONTH').size().reset_index(name='Количество продаж')
+                monthly_volume.columns = ['Месяц', 'Количество продаж']
+                
+                # Расчет скорости продаж (упрощенный)
+                avg_monthly_sales = monthly_volume['Количество продаж'].mean()
+                total_inventory = len(filtered_df)
+                months_supply = total_inventory / avg_monthly_sales if avg_monthly_sales > 0 else 0
+                
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    st.metric("Среднемесячные продажи", f"{avg_monthly_sales:.0f}")
+                with col2:
+                    st.metric("Текущее предложение", f"{total_inventory:,}")
+                with col3:
+                    st.metric("Месяцев предложения", f"{months_supply:.1f}")
+                
+                # График сезонности
+                fig = px.line(
+                    monthly_volume,
+                    x='Месяц',
+                    y='Количество продаж',
+                    title='Сезонность продаж недвижимости',
+                    markers=True
+                )
+                fig.update_xaxes(tickangle=45)
+                st.plotly_chart(fig, use_container_width=True)
+            
+            # Анализ ценовых диапазонов
+            st.subheader("Анализ ценовых диапазонов")
+            
+            if 'SALE PRICE' in filtered_df.columns:
+                # Создание ценовых категорий
+                price_bins = [0, 500000, 1000000, 2000000, 5000000, 10000000, 50000000, float('inf')]
+                price_labels = ['<$500K', '$500K-$1M', '$1M-$2M', '$2M-$5M', '$5M-$10M', '$10M-$50M', '>$50M']
+                
+                filtered_df['PRICE_RANGE'] = pd.cut(filtered_df['SALE PRICE'], bins=price_bins, labels=price_labels)
+                
+                price_range_analysis = filtered_df.groupby('PRICE_RANGE').agg({
+                    'SALE PRICE': 'count',
+                    'GROSS SQUARE FEET': 'mean',
+                    'PRICE_PER_SQFT': 'mean'
+                }).round(2)
+                
+                price_range_analysis.columns = ['Количество', 'Средняя площадь', 'Цена за кв.фут']
+                
+                fig = make_subplots(
+                    rows=1, cols=2,
+                    subplot_titles=('Распределение по ценовым диапазонам', 'Стоимость кв.фута по диапазонам'),
+                    shared_xaxes=True
+                )
+                
+                fig.add_trace(
+                    go.Bar(x=price_range_analysis.index, y=price_range_analysis['Количество'], 
+                          name='Количество', marker_color='lightblue'),
+                    row=1, col=1
+                )
+                
+                fig.add_trace(
+                    go.Scatter(x=price_range_analysis.index, y=price_range_analysis['Цена за кв.фут'],
+                              name='Цена за кв.фут', line=dict(color='red', width=3)),
+                    row=1, col=2
+                )
+                
+                fig.update_layout(height=400, showlegend=True)
+                st.plotly_chart(fig, use_container_width=True)
+    
+    # Секция 6: Прогнозный анализ
+    elif analysis_section == "🔮 Прогнозный анализ":
+        st.subheader("Прогнозный анализ рынка недвижимости")
+        
+        if 'SALE DATE' in filtered_df.columns and 'SALE PRICE' in filtered_df.columns:
+            # Подготовка данных для прогноза
+            forecast_df = filtered_df.copy()
+            forecast_df['TIME_INDEX'] = (forecast_df['SALE DATE'] - forecast_df['SALE DATE'].min()).dt.days
+            
+            # Группировка по месяцам для прогноза
+            forecast_df['YEAR_MONTH'] = forecast_df['SALE DATE'].dt.to_period('M')
+            monthly_data = forecast_df.groupby('YEAR_MONTH').agg({
+                'SALE PRICE': 'median',
+                'TIME_INDEX': 'first'
+            }).reset_index()
+            
+            monthly_data['YEAR_MONTH'] = monthly_data['YEAR_MONTH'].astype(str)
+            
+            if len(monthly_data) > 3:
+                # Линейная регрессия для прогноза
+                X = monthly_data[['TIME_INDEX']].values
+                y = monthly_data['SALE PRICE'].values
+                
+                model = LinearRegression()
+                model.fit(X, y)
+                
+                # Прогноз на 6 месяцев вперед
+                last_time = monthly_data['TIME_INDEX'].max()
+                future_months = 6
+                future_days = np.arange(last_time, last_time + 30 * future_months, 30)
+                future_prices = model.predict(future_days.reshape(-1, 1))
+                
+                # Визуализация прогноза
+                fig = go.Figure()
+                
+                # Исторические данные
+                fig.add_trace(go.Scatter(
+                    x=monthly_data['YEAR_MONTH'],
+                    y=monthly_data['SALE PRICE'],
+                    mode='lines+markers',
+                    name='Исторические данные',
+                    line=dict(color='blue', width=2)
+                ))
+                
+                # Прогноз
+                future_dates = pd.date_range(
+                    start=forecast_df['SALE DATE'].max(),
+                    periods=future_months + 1,
+                    freq='M'
+                )[1:]
+                
+                fig.add_trace(go.Scatter(
+                    x=future_dates.strftime('%Y-%m'),
+                    y=future_prices,
+                    mode='lines+markers',
+                    name='Прогноз',
+                    line=dict(color='red', width=2, dash='dash')
+                ))
+                
+                fig.update_layout(
+                    title='Прогноз цен на недвижимость на 6 месяцев',
+                    xaxis_title='Месяц',
+                    yaxis_title='Медианная цена ($)',
+                    yaxis_tickformat=',',
+                    height=500
+                )
+                
+                st.plotly_chart(fig, use_container_width=True)
+                
+                # Расчет ожидаемого роста
+                current_price = monthly_data['SALE PRICE'].iloc[-1]
+                forecasted_price = future_prices[-1]
+                expected_growth = ((forecasted_price - current_price) / current_price) * 100
+                
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    st.metric("Текущая медианная цена", f"${current_price:,.0f}")
+                with col2:
+                    st.metric("Прогноз через 6 месяцев", f"${forecasted_price:,.0f}")
+                with col3:
+                    st.metric("Ожидаемый рост", f"{expected_growth:.1f}%", 
+                             delta=f"{expected_growth:.1f}%")
+                
+                # Рекомендации на основе анализа
+                st.markdown("---")
+                st.subheader("💡 Рекомендации для инвесторов")
+                
+                recommendations = []
+                
+                # Генерация рекомендаций на основе анализа
+                if expected_growth > 5:
+                    recommendations.append("📈 **Рынок растет** - благоприятное время для инвестиций")
+                elif expected_growth < -2:
+                    recommendations.append("🛒 **Цены снижаются** - хорошие возможности для покупки")
+                else:
+                    recommendations.append("⚖️ **Стабильный рынок** - подходит для долгосрочных инвестиций")
+                
+                # Анализ по типам зданий для рекомендаций
+                if 'BUILDING CLASS CATEGORY' in filtered_df.columns:
+                    building_growth = filtered_df.groupby('BUILDING CLASS CATEGORY')['SALE PRICE'].mean().nlargest(3)
+                    if len(building_growth) > 0:
+                        top_type = building_growth.index[0]
+                        recommendations.append(f"🏢 **Рекомендуемый тип**: {top_type} - показывает лучшую доходность")
+                
+                # Анализ по районам для рекомендаций
+                if 'NEIGHBORHOOD' in filtered_df.columns:
+                    neighborhood_growth = filtered_df.groupby('NEIGHBORHOOD')['SALE PRICE'].mean().nlargest(3)
+                    if len(neighborhood_growth) > 0:
+                        top_area = neighborhood_growth.index[0]
+                        recommendations.append(f"📍 **Перспективный район**: {top_area} - высокий потенциал роста")
+                
+                # Вывод рекомендаций
+                st.write("**Ключевые рекомендации:**")
+                for i, rec in enumerate(recommendations, 1):
+                    st.write(f"{i}. {rec}")
+                
+                # Риски и ограничения
+                st.markdown("---")
+                st.subheader("⚠️ Риски и ограничения")
+                
+                risks = [
+                    "Прогноз основан на исторических данных и может не учитывать будущие экономические изменения",
+                    "Рынок недвижимости подвержен сезонным колебаниям",
+                    "Рекомендации носят информационный характер и не являются финансовым советом",
+                    "Необходимо учитывать индивидуальные финансовые возможности и цели"
+                ]
+                
+                for i, risk in enumerate(risks, 1):
+                    st.write(f"{i}. {risk}")
+            else:
+                st.warning("Недостаточно данных для построения прогноза. Требуется более 3 месяцев данных.")
+
+# Информация в футере
+st.sidebar.markdown("---")
+
+# Добавляем возможность сброса фильтров
+if st.sidebar.button("Сбросить все фильтры"):
+    st.rerun()
