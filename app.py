@@ -465,48 +465,46 @@ else:
         
         st.markdown("---")
         
-        # Анализ трендов
-        st.subheader("Анализ трендов")
+       # Анализ трендов
+    st.subheader("Анализ трендов")
+    
+    # Анализ по месяцам (если есть дата)
+    if 'SALE DATE' in filtered_df.columns:
+        filtered_df['SALE_MONTH'] = filtered_df['SALE DATE'].dt.to_period('M').astype(str)
+        filtered_df_russian['Месяц продажи'] = filtered_df['SALE_MONTH']
         
-        if 'SALE DATE' in filtered_df.columns:
-            filtered_df['SALE_YEAR'] = filtered_df['SALE DATE'].dt.year
-            filtered_df['SALE_MONTH'] = filtered_df['SALE DATE'].dt.to_period('M').astype(str)
-            
-            # Годовые тренды
-            yearly_trend = filtered_df.groupby('SALE_YEAR').agg({
-                'SALE PRICE': ['count', 'mean', 'median']
-            }).reset_index()
-            
-            yearly_trend.columns = ['Год', 'Количество продаж', 'Средняя цена', 'Медианная цена']
-            
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                fig = px.line(
-                    yearly_trend,
-                    x='Год',
-                    y='Количество продаж',
-                    title="Количество продаж по годам",
-                    markers=True
-                )
-                st.plotly_chart(fig, use_container_width=True)
-            
-            with col2:
-                fig = px.line(
-                    yearly_trend,
-                    x='Год',
-                    y='Медианная цена',
-                    title="Медианная цена по годам",
-                    markers=True
-                )
-                fig.update_layout(yaxis_tickformat=',')
-                st.plotly_chart(fig, use_container_width=True)
-            
-            # Расчет годового роста
-            if len(yearly_trend) > 1:
-                yearly_trend['Рост цен (%)'] = yearly_trend['Медианная цена'].pct_change() * 100
-                avg_growth = yearly_trend['Рост цен (%)'].mean()
-                st.metric("Среднегодовой рост цен", f"{avg_growth:.1f}%")
+        monthly_sales = filtered_df.groupby('SALE_MONTH').agg({
+            'SALE PRICE': ['count', 'mean', 'median']
+        }).reset_index()
+        
+        monthly_sales.columns = ['Month', 'Number of Sales', 'Average Price', 'Median Price']
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            fig = px.line(
+                monthly_sales,
+                x='Month',
+                y='Number of Sales',
+                title="Количество продаж по месяцам",
+                markers=True
+            )
+            fig.update_xaxes(tickangle=45)
+            st.plotly_chart(fig, use_container_width=True)
+        
+        with col2:
+            fig = px.line(
+                monthly_sales,
+                x='Month',
+                y='Median Price',
+                title="Медианная цена по месяцам",
+                markers=True
+            )
+            fig.update_layout(yaxis_tickformat=',')
+            fig.update_xaxes(tickangle=45)
+            st.plotly_chart(fig, use_container_width=True)
+    
+    st.markdown("---")
     
     # Секция 2: Анализ по типам зданий
     elif analysis_section == "Анализ по типам зданий":
