@@ -70,7 +70,7 @@ def reverse_translate_column(russian_name):
             return eng
     return russian_name
 
-# Загрузка данных
+# Загрузка данных с очисткой выбросов
 @st.cache_data
 def load_data():
     data = pd.read_csv("nyc-rolling-sales.csv")
@@ -86,9 +86,25 @@ def load_data():
     if 'SALE DATE' in data.columns:
         data['SALE DATE'] = pd.to_datetime(data['SALE DATE'], errors='coerce')
     
+    # ОЧИСТКА ВЫБРОСОВ В ЦЕНАХ
     if 'SALE PRICE' in data.columns:
+        # 1. Удаляем нулевые и отрицательные цены
         data = data[data['SALE PRICE'] > 0]
+        
+        # 2. Удаляем слишком низкие цены (< $10,000) - вероятно, опечатки
+        data = data[data['SALE PRICE'] >= 10000]
+        
+        # 3. Удаляем экстремально высокие цены (> $500 миллионов)
+        data = data[data['SALE PRICE'] <= 500_000_000]
+        
+        # 4. Дополнительная статистическая очистка (IQR метод)
+        q1 = data['SALE PRICE'].quantile(0.25)
+        q3 = data['SALE PRICE'].quantile(0.75)
+        iqr = q3 - q1
+        upper_bound = q3 + 3 * iqr  # Более строгая граница
+        data = data[data['SALE PRICE'] <= upper_bound]
     
+    # Очистка года постройки
     if 'YEAR BUILT' in data.columns:
         data = data[data['YEAR BUILT'] > 0]
     
@@ -143,15 +159,26 @@ if 'YEAR BUILT' in df.columns:
     else:
         year_range = (1800, 2023)
 
-# Фильтр по цене
+# Фильтр по цене с РЕАЛИСТИЧНЫМИ границами
 if 'SALE PRICE' in df.columns:
-    min_price = float(df['SALE PRICE'].min())
-    max_price = float(df['SALE PRICE'].max())
+    # Реалистичные границы для Нью-Йорка
+    realistic_min_price = 10000  # Минимум 10 тысяч долларов
+    realistic_max_price = 100_000_000  # Максимум 100 миллионов долларов
+    
+    # Используем фактические данные, но ограничиваем реалистичными границами
+    actual_min = max(float(df['SALE PRICE'].min()), realistic_min_price)
+    actual_max = min(float(df['SALE PRICE'].max()), realistic_max_price)
+    
+    # Для слайдера устанавливаем разумные границы
+    default_min = 10000
+    default_max = 50_000_000  # 50 миллионов как разумный максимум для слайдера
+    
     price_range = st.sidebar.slider(
         COLUMN_TRANSLATIONS.get('SALE PRICE', 'Цена продажи') + " ($)",
-        min_value=float(min_price),
-        max_value=float(max_price),
-        value=(float(min_price), float(max_price))
+        min_value=int(default_min),
+        max_value=int(default_max),
+        value=(int(default_min), int(default_max)),
+        step=10000
     )
 
 # Применяем фильтры
@@ -177,6 +204,16 @@ if 'SALE PRICE' in df.columns:
 
 # Создаем DataFrame с русскими названиями для отображения
 filtered_df_russian = translate_columns(filtered_df.copy())
+
+# Создаем производные колонки ДО всех анализов
+if 'SALE DATE' in filtered_df.columns:
+    # Месяц продажи
+    filtered_df['SALE_MONTH'] = filtered_df['SALE DATE'].dt.to_period('M').astype(str)
+    filtered_df_russian['Месяц продажи'] = filtered_df['SALE_MONTH']
+    
+    # Год продажи
+    filtered_df['SALE_YEAR'] = filtered_df['SALE DATE'].dt.year
+    filtered_df_russian['Год продажи'] = filtered_df['SALE_YEAR']
 
 if all(col in filtered_df.columns for col in ['SALE PRICE', 'GROSS SQUARE FEET']):
     # Цена за квадратный фут
@@ -222,8 +259,9 @@ elif page == "Визуализация исходных данных":
     
     with col2:
         if 'SALE PRICE' in filtered_df.columns:
-            avg_price = filtered_df['SALE PRICE'].mean()
-            st.metric("Средняя цена ($)", f"{avg_price:,.0f}")
+            # Используем медиану вместо среднего (менее чувствительна к выбросам)
+            median_price = filtered_df['SALE PRICE'].median()
+            st.metric("Медианная цена ($)", f"{median_price:,.0f}")
     
     with col3:
         if 'YEAR BUILT' in filtered_df.columns:
@@ -237,6 +275,24 @@ elif page == "Визуализация исходных данных":
     with col4:
         unique_neighborhoods = filtered_df['NEIGHBORHOOD'].nunique()
         st.metric("Количество районов", unique_neighborhoods)
+    
+    # Проверка на выбросы в ценах
+    st.markdown("---")
+    if 'SALE PRICE' in filtered_df.columns:
+        extreme_prices = filtered_df[filtered_df['SALE PRICE'] > 100_000_000]
+        if len(extreme_prices) > 0:
+            st.warning(f"⚠️ **Обнаружены {len(extreme_prices)} записей с ценой выше 100 млн$.** "
+                      "Рекомендуется использовать медиану вместо средней цены для анализа.")
+            
+            # Показать топ выбросов
+            if st.checkbox("Показать записи с экстремальными ценами"):
+                st.dataframe(
+                    extreme_prices[['NEIGHBORHOOD', 'BUILDING CLASS CATEGORY', 'SALE PRICE', 'GROSS SQUARE FEET']]
+                    .sort_values('SALE PRICE', ascending=False)
+                    .head(10)
+                    .style.format({'SALE PRICE': '${:,.0f}', 'GROSS SQUARE FEET': '{:,.0f}'}),
+                    use_container_width=True
+                )
     
     st.markdown("---")
     
@@ -465,19 +521,16 @@ else:
         
         st.markdown("---")
         
-           # Анализ трендов
+        # Анализ трендов
         st.subheader("Анализ трендов")
         
         # Анализ по месяцам (если есть дата)
         if 'SALE DATE' in filtered_df.columns:
-            filtered_df['SALE_MONTH'] = filtered_df['SALE DATE'].dt.to_period('M').astype(str)
-            filtered_df_russian['Месяц продажи'] = filtered_df['SALE_MONTH']
-            
             monthly_sales = filtered_df.groupby('SALE_MONTH').agg({
-                'SALE PRICE': ['count', 'mean', 'median']
+                'SALE PRICE': ['count', 'median']  # Используем медиану вместо среднего
             }).reset_index()
             
-            monthly_sales.columns = ['Month', 'Number of Sales', 'Average Price', 'Median Price']
+            monthly_sales.columns = ['Month', 'Number of Sales', 'Median Price']
             
             col1, col2 = st.columns(2)
             
@@ -513,16 +566,16 @@ else:
         if 'BUILDING CLASS CATEGORY' in filtered_df.columns:
             # Группировка по типам зданий
             building_analysis = filtered_df.groupby('BUILDING CLASS CATEGORY').agg({
-                'SALE PRICE': ['count', 'mean', 'median', 'std'],
+                'SALE PRICE': ['count', 'median', 'std'],  # Используем медиану вместо среднего
                 'GROSS SQUARE FEET': 'mean',
                 'TOTAL UNITS': 'mean'
             }).round(2)
             
-            building_analysis.columns = ['Количество', 'Средняя цена', 'Медианная цена', 
-                                         'Стд. отклонение', 'Средняя площадь', 'Среднее кол-во единиц']
+            building_analysis.columns = ['Количество', 'Медианная цена', 'Стд. отклонение', 
+                                         'Средняя площадь', 'Среднее кол-во единиц']
             
             # Топ-10 самых дорогих типов
-            top_buildings = building_analysis.sort_values('Средняя цена', ascending=False).head(10)
+            top_buildings = building_analysis.sort_values('Медианная цена', ascending=False).head(10)
             
             col1, col2 = st.columns(2)
             
@@ -530,9 +583,9 @@ else:
                 fig = px.bar(
                     top_buildings.reset_index(),
                     x='BUILDING CLASS CATEGORY',
-                    y='Средняя цена',
-                    title='Топ-10 самых дорогих типов недвижимости',
-                    color='Средняя цена',
+                    y='Медианная цена',
+                    title='Топ-10 самых дорогих типов недвижимости (медиана)',
+                    color='Медианная цена',
                     color_continuous_scale='Viridis'
                 )
                 fig.update_xaxes(tickangle=45, tickfont=dict(size=10))
@@ -556,12 +609,11 @@ else:
             st.subheader("Детальная статистика по типам зданий")
             
             # Добавляем цену за кв.фут
-            building_analysis['Цена за кв.фут'] = building_analysis['Средняя цена'] / building_analysis['Средняя площадь']
+            building_analysis['Цена за кв.фут'] = building_analysis['Медианная цена'] / building_analysis['Средняя площадь']
             
             st.dataframe(
-                building_analysis.sort_values('Средняя цена', ascending=False).style.format({
+                building_analysis.sort_values('Медианная цена', ascending=False).style.format({
                     'Количество': '{:,.0f}',
-                    'Средняя цена': '${:,.0f}',
                     'Медианная цена': '${:,.0f}',
                     'Стд. отклонение': '${:,.0f}',
                     'Средняя площадь': '{:,.0f}',
@@ -584,12 +636,12 @@ else:
                 )
                 
                 type_analysis = filtered_df.groupby('PROPERTY_TYPE').agg({
-                    'SALE PRICE': ['count', 'mean', 'median'],
+                    'SALE PRICE': ['count', 'median'],
                     'GROSS SQUARE FEET': 'mean'
                 }).round(2)
                 
-                type_analysis.columns = ['Количество', 'Средняя цена', 'Медианная цена', 'Средняя площадь']
-                type_analysis['Цена за кв.фут'] = type_analysis['Средняя цена'] / type_analysis['Средняя площадь']
+                type_analysis.columns = ['Количество', 'Медианная цена', 'Средняя площадь']
+                type_analysis['Цена за кв.фут'] = type_analysis['Медианная цена'] / type_analysis['Средняя площадь']
                 
                 fig = px.bar(
                     type_analysis.reset_index(),
@@ -620,16 +672,16 @@ else:
             
             # Анализ по Borough
             borough_analysis = filtered_df.groupby('BOROUGH_NAME').agg({
-                'SALE PRICE': ['count', 'mean', 'median', 'std'],
+                'SALE PRICE': ['count', 'median', 'std'],  # Используем медиану
                 'GROSS SQUARE FEET': 'mean',
                 'YEAR BUILT': 'mean'
             }).round(2)
             
-            borough_analysis.columns = ['Количество', 'Средняя цена', 'Медианная цена', 
-                                        'Стд. отклонение', 'Средняя площадь', 'Средний год постройки']
+            borough_analysis.columns = ['Количество', 'Медианная цена', 'Стд. отклонение', 
+                                        'Средняя площадь', 'Средний год постройки']
             
             # Добавляем цену за кв.фут
-            borough_analysis['Цена за кв.фут'] = borough_analysis['Средняя цена'] / borough_analysis['Средняя площадь']
+            borough_analysis['Цена за кв.фут'] = borough_analysis['Медианная цена'] / borough_analysis['Средняя площадь']
             
             col1, col2 = st.columns(2)
             
@@ -638,11 +690,11 @@ else:
                 fig = px.bar(
                     borough_analysis.reset_index(),
                     x='BOROUGH_NAME',
-                    y='Средняя цена',
-                    title='Средняя цена по городским округам',
-                    color='Средняя цена',
+                    y='Медианная цена',
+                    title='Медианная цена по городским округам',
+                    color='Медианная цена',
                     color_continuous_scale='thermal',
-                    text='Средняя цена'
+                    text='Медианная цена'
                 )
                 fig.update_traces(texttemplate='$%{text:,.0f}', textposition='outside')
                 st.plotly_chart(fig, use_container_width=True)
@@ -664,20 +716,20 @@ else:
             if 'NEIGHBORHOOD' in filtered_df.columns:
                 # Топ-20 районов по количеству продаж
                 neighborhood_stats = filtered_df.groupby('NEIGHBORHOOD').agg({
-                    'SALE PRICE': ['count', 'mean', 'median']
+                    'SALE PRICE': ['count', 'median']  # Используем медиану
                 }).round(2)
                 
-                neighborhood_stats.columns = ['Количество продаж', 'Средняя цена', 'Медианная цена']
+                neighborhood_stats.columns = ['Количество продаж', 'Медианная цена']
                 neighborhood_stats = neighborhood_stats.sort_values('Количество продаж', ascending=False).head(20)
                 
                 fig = px.scatter(
                     neighborhood_stats.reset_index(),
-                    x='Средняя цена',
+                    x='Медианная цена',
                     y='Количество продаж',
                     size='Количество продаж',
-                    color='Средняя цена',
+                    color='Медианная цена',
                     hover_name='NEIGHBORHOOD',
-                    title='Соотношение цены и количества продаж по районам',
+                    title='Соотношение цены и количества продаж по районам (медиана)',
                     size_max=60
                 )
                 fig.update_layout(xaxis_tickformat=',')
@@ -687,16 +739,16 @@ else:
                 col1, col2 = st.columns(2)
                 
                 with col1:
-                    expensive_neighborhoods = neighborhood_stats.nlargest(10, 'Средняя цена')
+                    expensive_neighborhoods = neighborhood_stats.nlargest(10, 'Медианная цена')
                     st.write("**Топ-10 самых дорогих районов:**")
                     for idx, (neighborhood, row) in enumerate(expensive_neighborhoods.iterrows(), 1):
-                        st.write(f"{idx}. {neighborhood}: ${row['Средняя цена']:,.0f}")
+                        st.write(f"{idx}. {neighborhood}: ${row['Медианная цена']:,.0f}")
                 
                 with col2:
-                    affordable_neighborhoods = neighborhood_stats.nsmallest(10, 'Средняя цена')
+                    affordable_neighborhoods = neighborhood_stats.nsmallest(10, 'Медианная цена')
                     st.write("**Топ-10 самых доступных районов:**")
                     for idx, (neighborhood, row) in enumerate(affordable_neighborhoods.iterrows(), 1):
-                        st.write(f"{idx}. {neighborhood}: ${row['Средняя цена']:,.0f}")
+                        st.write(f"{idx}. {neighborhood}: ${row['Медианная цена']:,.0f}")
     
     # Секция 4: Прогнозный анализ
     elif analysis_section == "Прогнозный анализ":
@@ -710,7 +762,7 @@ else:
             # Группировка по месяцам для прогноза
             forecast_df['YEAR_MONTH'] = forecast_df['SALE DATE'].dt.to_period('M')
             monthly_data = forecast_df.groupby('YEAR_MONTH').agg({
-                'SALE PRICE': 'median',
+                'SALE PRICE': 'median',  # Используем медиану
                 'TIME_INDEX': 'first'
             }).reset_index()
             
@@ -797,14 +849,14 @@ else:
                 
                 # Анализ по типам зданий для рекомендаций
                 if 'BUILDING CLASS CATEGORY' in filtered_df.columns:
-                    building_growth = filtered_df.groupby('BUILDING CLASS CATEGORY')['SALE PRICE'].mean().nlargest(3)
+                    building_growth = filtered_df.groupby('BUILDING CLASS CATEGORY')['SALE PRICE'].median().nlargest(3)
                     if len(building_growth) > 0:
                         top_type = building_growth.index[0]
                         recommendations.append(f"🏢 **Рекомендуемый тип**: {top_type} - показывает лучшую доходность")
                 
                 # Анализ по районам для рекомендаций
                 if 'NEIGHBORHOOD' in filtered_df.columns:
-                    neighborhood_growth = filtered_df.groupby('NEIGHBORHOOD')['SALE PRICE'].mean().nlargest(3)
+                    neighborhood_growth = filtered_df.groupby('NEIGHBORHOOD')['SALE PRICE'].median().nlargest(3)
                     if len(neighborhood_growth) > 0:
                         top_area = neighborhood_growth.index[0]
                         recommendations.append(f"📍 **Перспективный район**: {top_area} - высокий потенциал роста")
@@ -833,6 +885,6 @@ else:
 # Информация в футере
 st.sidebar.markdown("---")
 
-# # Добавляем возможность сброса фильтров
-# if st.sidebar.button("Сбросить все фильтры"):
-#     st.rerun()
+# Добавляем возможность сброса фильтров
+if st.sidebar.button("Сбросить все фильтры"):
+    st.rerun()
