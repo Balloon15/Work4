@@ -788,4 +788,491 @@ elif page == "Результаты анализа":
             
             st.dataframe(
                 category_stats.style.format({
-                    'Средняя
+                    'Средняя цена': '{:,.0f}',
+                    'Медианная цена': '{:,.0f}',
+                    'Средняя площадь': '{:,.0f}',
+                    'Цена за кв.фут': '{:.2f}'
+                }),
+                use_container_width=True,
+                height=300
+            )
+    
+    st.markdown("---")
+    
+    # Инсайты
+    st.subheader("Ключевые инсайты")
+    
+    insight_col1, insight_col2 = st.columns(2)
+    
+    with insight_col1:
+        st.markdown("##### Основные наблюдения:")
+        
+        if 'SALE PRICE' in filtered_df.columns:
+            # Самый дорогой район
+            if 'NEIGHBORHOOD' in filtered_df.columns:
+                most_expensive = filtered_df.groupby('NEIGHBORHOOD')['SALE PRICE'].mean().idxmax()
+                most_expensive_price = filtered_df.groupby('NEIGHBORHOOD')['SALE PRICE'].mean().max()
+                st.write(f"**Самый дорогой район**: {most_expensive} (средняя цена: ${most_expensive_price:,.0f})")
+            
+            # Динамика цен
+            if 'SALE DATE' in filtered_df.columns:
+                recent_prices = filtered_df[filtered_df['SALE DATE'] > '2017-01-01']['SALE PRICE'].mean()
+                older_prices = filtered_df[filtered_df['SALE DATE'] < '2017-01-01']['SALE PRICE'].mean()
+                if older_prices > 0:
+                    price_change = ((recent_prices - older_prices) / older_prices) * 100
+                    st.write(f"**Изменение цен**: {price_change:+.1f}% с начала 2017 года")
+    
+    # Дополнительные опции анализа
+    st.markdown("---")
+    st.subheader("Дополнительные опции анализа")
+    
+    if st.button("Запустить углубленный анализ"):
+        with st.spinner("Выполняется анализ..."):
+            # Здесь можно добавить более сложный анализ
+            st.success("Анализ завершен!")
+            
+            # Пример дополнительного анализа
+            if 'SALE PRICE' in filtered_df.columns and 'GROSS SQUARE FEET' in filtered_df.columns:
+                # Фильтруем только корректные данные
+                valid_corr_data = filtered_df[(filtered_df['SALE PRICE'] > 0) & (filtered_df['GROSS SQUARE FEET'] > 0)]
+                if not valid_corr_data.empty:
+                    correlation = valid_corr_data['SALE PRICE'].corr(valid_corr_data['GROSS SQUARE FEET'])
+                    st.write(f"**Корреляция цена-площадь**: {correlation:.3f}")
+                    
+                    if correlation > 0.7:
+                        st.info("Сильная положительная корреляция: цена сильно зависит от площади")
+                    elif correlation > 0.3:
+                        st.warning("Умеренная корреляция: площадь влияет на цену, но есть другие факторы")
+                    else:
+                        st.info("Слабая корреляция: цена мало зависит от площади")
+                else:
+                    st.warning("Недостаточно данных для анализа корреляции")
+
+# Страница 3: Анализ выбросов
+elif page == "Анализ выбросов":
+    st.title("📊 Анализ выбросов в данных")
+    
+    # Вступление
+    st.markdown("""
+    На этой странице представлен анализ выбросов (outliers) в данных о продажах недвижимости Нью-Йорка.
+    Выбросы - это значения, которые значительно отличаются от остальных наблюдений и могут искажать статистический анализ.
+    """)
+    
+    # Методы обнаружения выбросов
+    st.markdown("---")
+    st.subheader("🔍 Методы обнаружения выбросов")
+    
+    method = st.radio(
+        "Выберите метод обнаружения выбросов:",
+        ["Метод IQR (межквартильный размах)", "Метод Z-score", "Все методы"],
+        horizontal=True
+    )
+    
+    # Выбор колонок для анализа
+    st.markdown("---")
+    st.subheader("📈 Выберите переменные для анализа")
+    
+    numeric_cols = filtered_df.select_dtypes(include=[np.number]).columns.tolist()
+    
+    # Основные числовые колонки для анализа
+    main_numeric_cols = ['SALE PRICE', 'GROSS SQUARE FEET', 'LAND SQUARE FEET', 
+                         'YEAR BUILT', 'TOTAL UNITS']
+    
+    available_cols = [col for col in main_numeric_cols if col in numeric_cols]
+    
+    selected_cols = st.multiselect(
+        "Выберите переменные для анализа выбросов:",
+        [COLUMN_TRANSLATIONS.get(col, col) for col in available_cols],
+        default=[COLUMN_TRANSLATIONS.get('SALE PRICE', 'Цена продажи')]
+    )
+    
+    # Преобразуем обратно в английские названия
+    selected_cols_eng = [reverse_translate_column(col) for col in selected_cols]
+    
+    if selected_cols_eng:
+        st.markdown("---")
+        
+        # 1. Статистика по выбросам
+        st.subheader("📊 Статистика выбросов")
+        
+        outliers_stats = []
+        
+        for col in selected_cols_eng:
+            if col in filtered_df.columns:
+                data = filtered_df[col].dropna()
+                
+                if len(data) > 0:
+                    # Базовые статистики
+                    q1 = data.quantile(0.25)
+                    q3 = data.quantile(0.75)
+                    iqr = q3 - q1
+                    
+                    # Границы для IQR метода
+                    lower_bound_iqr = q1 - 1.5 * iqr
+                    upper_bound_iqr = q3 + 1.5 * iqr
+                    
+                    # Выбросы по IQR
+                    outliers_iqr = data[(data < lower_bound_iqr) | (data > upper_bound_iqr)]
+                    
+                    # Z-score метод
+                    z_scores = np.abs(stats.zscore(data))
+                    outliers_zscore = data[z_scores > 3]
+                    
+                    outliers_stats.append({
+                        'Переменная': COLUMN_TRANSLATIONS.get(col, col),
+                        'Всего значений': len(data),
+                        'Выбросов (IQR)': len(outliers_iqr),
+                        '% выбросов (IQR)': f"{(len(outliers_iqr) / len(data) * 100):.2f}%",
+                        'Выбросов (Z-score >3)': len(outliers_zscore),
+                        '% выбросов (Z-score)': f"{(len(outliers_zscore) / len(data) * 100):.2f}%",
+                        'Мин. значение': f"{data.min():,.2f}",
+                        'Макс. значение': f"{data.max():,.2f}",
+                        'Медиана': f"{data.median():,.2f}"
+                    })
+        
+        if outliers_stats:
+            stats_df = pd.DataFrame(outliers_stats)
+            st.dataframe(stats_df, use_container_width=True)
+        
+        st.markdown("---")
+        
+        # 2. Визуализации для каждой выбранной колонки
+        st.subheader("📉 Визуализация выбросов")
+        
+        for i, col in enumerate(selected_cols_eng):
+            if col in filtered_df.columns:
+                st.markdown(f"#### {COLUMN_TRANSLATIONS.get(col, col)}")
+                
+                data = filtered_df[col].dropna()
+                
+                if len(data) > 0:
+                    col1, col2 = st.columns(2)
+                    
+                    with col1:
+                        # Box plot
+                        fig = px.box(
+                            filtered_df_russian,
+                            y=COLUMN_TRANSLATIONS.get(col, col),
+                            title=f"Box plot для {COLUMN_TRANSLATIONS.get(col, col)}",
+                            points="all"
+                        )
+                        
+                        # Добавляем аннотации для выбросов
+                        q1 = data.quantile(0.25)
+                        q3 = data.quantile(0.75)
+                        iqr = q3 - q1
+                        upper_bound = q3 + 1.5 * iqr
+                        
+                        # Находим выбросы
+                        outliers = data[data > upper_bound]
+                        
+                        if len(outliers) > 0:
+                            # Добавляем линию для верхней границы
+                            fig.add_hline(
+                                y=upper_bound,
+                                line_dash="dash",
+                                line_color="red",
+                                annotation_text=f"Верхняя граница: {upper_bound:,.2f}",
+                                annotation_position="bottom right"
+                            )
+                        
+                        st.plotly_chart(fig, use_container_width=True)
+                    
+                    with col2:
+                        # Гистограмма с выделением выбросов
+                        fig = px.histogram(
+                            filtered_df_russian,
+                            x=COLUMN_TRANSLATIONS.get(col, col),
+                            nbins=50,
+                            title=f"Распределение {COLUMN_TRANSLATIONS.get(col, col)}",
+                            marginal="box"
+                        )
+                        st.plotly_chart(fig, use_container_width=True)
+                    
+                    # Scatter plot для выбросов по времени (если есть дата)
+                    if 'SALE DATE' in filtered_df.columns and i == 0:
+                        st.markdown("##### Выбросы по времени")
+                        
+                        # Создаем флаг выбросов
+                        q1 = data.quantile(0.25)
+                        q3 = data.quantile(0.75)
+                        iqr = q3 - q1
+                        upper_bound = q3 + 1.5 * iqr
+                        
+                        filtered_df_with_outliers = filtered_df.copy()
+                        filtered_df_with_outliers['is_outlier'] = filtered_df_with_outliers[col] > upper_bound
+                        
+                        fig = px.scatter(
+                            filtered_df_with_outliers,
+                            x='SALE DATE',
+                            y=col,
+                            color='is_outlier',
+                            title=f"Выбросы {COLUMN_TRANSLATIONS.get(col, col)} по времени",
+                            labels={
+                                'SALE DATE': 'Дата продажи',
+                                col: COLUMN_TRANSLATIONS.get(col, col),
+                                'is_outlier': 'Выброс'
+                            },
+                            color_discrete_map={True: 'red', False: 'blue'}
+                        )
+                        st.plotly_chart(fig, use_container_width=True)
+                    
+                    st.markdown("---")
+        
+        # 3. Матрица scatter plots для многомерного анализа
+        st.subheader("🔗 Многомерный анализ выбросов")
+        
+        if len(selected_cols_eng) >= 2:
+            # Выбираем две основные переменные
+            col_x = st.selectbox(
+                "Выберите переменную для оси X:",
+                [COLUMN_TRANSLATIONS.get(col, col) for col in selected_cols_eng],
+                index=0
+            )
+            
+            col_y = st.selectbox(
+                "Выберите переменную для оси Y:",
+                [COLUMN_TRANSLATIONS.get(col, col) for col in selected_cols_eng],
+                index=min(1, len(selected_cols_eng)-1)
+            )
+            
+            col_x_eng = reverse_translate_column(col_x)
+            col_y_eng = reverse_translate_column(col_y)
+            
+            if col_x_eng in filtered_df.columns and col_y_eng in filtered_df.columns:
+                # Создаем флаг выбросов для обеих переменных
+                data_x = filtered_df[col_x_eng].dropna()
+                data_y = filtered_df[col_y_eng].dropna()
+                
+                if len(data_x) > 0 and len(data_y) > 0:
+                    # Вычисляем выбросы для обеих переменных
+                    q1_x = data_x.quantile(0.25)
+                    q3_x = data_x.quantile(0.75)
+                    iqr_x = q3_x - q1_x
+                    upper_bound_x = q3_x + 1.5 * iqr_x
+                    
+                    q1_y = data_y.quantile(0.25)
+                    q3_y = data_y.quantile(0.75)
+                    iqr_y = q3_y - q1_y
+                    upper_bound_y = q3_y + 1.5 * iqr_y
+                    
+                    # Флаг выбросов
+                    filtered_df['outlier_x'] = filtered_df[col_x_eng] > upper_bound_x
+                    filtered_df['outlier_y'] = filtered_df[col_y_eng] > upper_bound_y
+                    filtered_df['is_outlier'] = filtered_df['outlier_x'] | filtered_df['outlier_y']
+                    
+                    # Scatter plot с выделением выбросов
+                    fig = px.scatter(
+                        filtered_df,
+                        x=col_x_eng,
+                        y=col_y_eng,
+                        color='is_outlier',
+                        title=f"Многомерные выбросы: {col_x} vs {col_y}",
+                        labels={
+                            col_x_eng: col_x,
+                            col_y_eng: col_y,
+                            'is_outlier': 'Выброс'
+                        },
+                        color_discrete_map={True: 'red', False: 'blue'},
+                        hover_data=['NEIGHBORHOOD', 'BUILDING CLASS CATEGORY']
+                    )
+                    
+                    # Добавляем линии границ
+                    fig.add_vline(
+                        x=upper_bound_x,
+                        line_dash="dash",
+                        line_color="orange",
+                        annotation_text=f"Граница {col_x}",
+                        annotation_position="top right"
+                    )
+                    
+                    fig.add_hline(
+                        y=upper_bound_y,
+                        line_dash="dash",
+                        line_color="orange",
+                        annotation_text=f"Гранциа {col_y}",
+                        annotation_position="bottom right"
+                    )
+                    
+                    st.plotly_chart(fig, use_container_width=True)
+                    
+                    # Статистика по многомерным выбросам
+                    outlier_count = filtered_df['is_outlier'].sum()
+                    total_count = len(filtered_df)
+                    
+                    col1, col2, col3 = st.columns(3)
+                    with col1:
+                        st.metric("Многомерных выбросов", outlier_count)
+                    with col2:
+                        st.metric("Всего записей", total_count)
+                    with col3:
+                        st.metric("Доля выбросов", f"{(outlier_count/total_count*100):.2f}%")
+        
+        # 4. Детальный просмотр выбросов
+        st.markdown("---")
+        st.subheader("🔎 Детальный просмотр выбросов")
+        
+        # Выбор колонки для детального анализа
+        detail_col = st.selectbox(
+            "Выберите переменную для детального просмотра выбросов:",
+            [COLUMN_TRANSLATIONS.get(col, col) for col in selected_cols_eng]
+        )
+        
+        detail_col_eng = reverse_translate_column(detail_col)
+        
+        if detail_col_eng in filtered_df.columns:
+            data = filtered_df[detail_col_eng].dropna()
+            
+            if len(data) > 0:
+                # Вычисляем границы
+                q1 = data.quantile(0.25)
+                q3 = data.quantile(0.75)
+                iqr = q3 - q1
+                upper_bound = q3 + 1.5 * iqr
+                
+                # Получаем выбросы
+                outliers_df = filtered_df[filtered_df[detail_col_eng] > upper_bound].copy()
+                
+                # Сортируем по значению выброса
+                outliers_df = outliers_df.sort_values(detail_col_eng, ascending=False)
+                
+                # Добавляем информацию о том, насколько значение превышает границу
+                outliers_df['excess_percentage'] = ((outliers_df[detail_col_eng] - upper_bound) / upper_bound * 100).round(2)
+                
+                st.write(f"**Найдено выбросов: {len(outliers_df)}**")
+                st.write(f"**Верхняя граница: {upper_bound:,.2f}**")
+                
+                # Показываем топ выбросов
+                if len(outliers_df) > 0:
+                    # Выбираем колонки для отображения
+                    display_cols = [
+                        'NEIGHBORHOOD', 'BUILDING CLASS CATEGORY', 
+                        'SALE PRICE', 'GROSS SQUARE FEET', 'YEAR BUILT',
+                        detail_col_eng, 'excess_percentage'
+                    ]
+                    
+                    available_display_cols = [col for col in display_cols if col in outliers_df.columns]
+                    
+                    # Переводим названия колонок
+                    outliers_display = outliers_df[available_display_cols].copy()
+                    
+                    # Переименовываем для отображения
+                    rename_dict = {}
+                    for col in available_display_cols:
+                        if col == detail_col_eng:
+                            rename_dict[col] = f"{detail_col} (значение)"
+                        elif col == 'excess_percentage':
+                            rename_dict[col] = 'Превышение границы (%)'
+                        else:
+                            rename_dict[col] = COLUMN_TRANSLATIONS.get(col, col)
+                    
+                    outliers_display = outliers_display.rename(columns=rename_dict)
+                    
+                    # Форматирование чисел
+                    st.dataframe(
+                        outliers_display.style.format({
+                            f"{detail_col} (значение)": '{:,.2f}',
+                            'Цена продажи': '{:,.2f}',
+                            'Общая площадь (кв. фут)': '{:,.2f}',
+                            'Превышение границы (%)': '{:,.2f}%'
+                        }),
+                        use_container_width=True,
+                        height=400
+                    )
+                    
+                    # Экспорт выбросов
+                    csv = outliers_df.to_csv(index=False).encode('utf-8')
+                    st.download_button(
+                        label="📥 Скачать данные выбросов (CSV)",
+                        data=csv,
+                        file_name="nyc_property_outliers.csv",
+                        mime="text/csv",
+                    )
+        
+        # 5. Рекомендации по обработке выбросов
+        st.markdown("---")
+        st.subheader("💡 Рекомендации по обработке выбросов")
+        
+        st.markdown("""
+        ### Что делать с выбросами?
+        
+        1. **Анализ природы выбросов**:
+           - Проверьте, не являются ли выбросы ошибками в данных
+           - Проанализируйте, представляют ли они реальные редкие случаи (например, продажи элитной недвижимости)
+        
+        2. **Методы обработки**:
+           - **Удаление**: Если выбросы являются ошибками или сильно искажают анализ
+           - **Трансформация**: Логарифмирование данных для уменьшения влияния выбросов
+           - **Винсоризация**: Замена выбросов на граничные значения
+           - **Сохранение**: Если выбросы представляют интересные случаи для анализа
+        
+        3. **Для данного датасета**:
+           - Выбросы в цене могут представлять реальные продажи элитной недвижимости
+           - Выбросы в площади могут быть коммерческими объектами
+           - Рекомендуется анализировать выбросы отдельно от основной массы данных
+        """)
+        
+        # Быстрое действие: создание очищенного датасета
+        if st.button("🔄 Создать очищенную версию данных (без выбросов)"):
+            with st.spinner("Удаляем выбросы..."):
+                cleaned_df = filtered_df.copy()
+                
+                for col in selected_cols_eng:
+                    if col in cleaned_df.columns:
+                        data = cleaned_df[col].dropna()
+                        if len(data) > 0:
+                            q1 = data.quantile(0.25)
+                            q3 = data.quantile(0.75)
+                            iqr = q3 - q1
+                            lower_bound = q1 - 1.5 * iqr
+                            upper_bound = q3 + 1.5 * iqr
+                            
+                            # Удаляем выбросы
+                            mask = (cleaned_df[col] >= lower_bound) & (cleaned_df[col] <= upper_bound)
+                            cleaned_df = cleaned_df[mask | cleaned_df[col].isna()]
+                
+                st.success(f"Данные очищены! Осталось {len(cleaned_df)} записей из {len(filtered_df)}")
+                
+                # Показываем сравнение
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.metric("Исходные данные", len(filtered_df))
+                with col2:
+                    st.metric("Очищенные данные", len(cleaned_df))
+                
+                # Скачать очищенные данные
+                csv = cleaned_df.to_csv(index=False).encode('utf-8')
+                st.download_button(
+                    label="📥 Скачать очищенные данные (CSV)",
+                    data=csv,
+                    file_name="nyc_property_cleaned.csv",
+                    mime="text/csv",
+                )
+    
+    else:
+        st.warning("Выберите хотя бы одну переменную для анализа выбросов")
+
+# Страница 4: Таблица переводов
+elif page == "Таблица переводов":
+    st.title("Таблица переводов названий колонок")
+    
+    # Создаем таблицу с переводами
+    translation_table = pd.DataFrame({
+        'Оригинальное название (англ.)': list(COLUMN_TRANSLATIONS.keys()),
+        'Перевод (рус.)': list(COLUMN_TRANSLATIONS.values())
+    })
+    
+    st.dataframe(
+        translation_table,
+        use_container_width=True,
+        height=600
+    )
+    
+    st.markdown("---")
+
+# Информация в футере
+st.sidebar.markdown("---")
+
+# Добавляем возможность сброса фильтров
+if st.sidebar.button("Сбросить все фильтры"):
+    st.rerun()
