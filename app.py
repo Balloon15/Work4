@@ -178,6 +178,21 @@ if 'SALE PRICE' in df.columns:
 # Создаем DataFrame с русскими названиями для отображения
 filtered_df_russian = translate_columns(filtered_df.copy())
 
+if all(col in filtered_df.columns for col in ['SALE PRICE', 'GROSS SQUARE FEET']):
+    # Цена за квадратный фут
+    filtered_df['PRICE_PER_SQFT'] = filtered_df['SALE PRICE'] / filtered_df['GROSS SQUARE FEET']
+    filtered_df_russian['Цена за кв.фут'] = filtered_df['PRICE_PER_SQFT']
+    
+if all(col in filtered_df.columns for col in ['SALE PRICE', 'TOTAL UNITS']):
+    # Цена за единицу (для многоквартирных домов)
+    filtered_df['PRICE_PER_UNIT'] = filtered_df['SALE PRICE'] / filtered_df['TOTAL UNITS'].replace(0, np.nan)
+    filtered_df_russian['Цена за единицу'] = filtered_df['PRICE_PER_UNIT']
+    
+if 'YEAR BUILT' in filtered_df.columns:
+    # Возраст здания
+    filtered_df['BUILDING_AGE'] = datetime.now().year - filtered_df['YEAR BUILT']
+    filtered_df_russian['Возраст здания'] = filtered_df['BUILDING_AGE']
+
 # Страница 3: Таблица переводов
 if page == "Таблица переводов":
     st.title("Таблица переводов названий колонок")
