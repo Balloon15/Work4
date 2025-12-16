@@ -95,6 +95,10 @@ def load_data():
         # Удаляем строки с некорректными ценами
         data = data[data['SALE PRICE'] > 0]
     
+    # Очистка года постройки - удаляем некорректные значения (<= 0 или слишком старые)
+    if 'YEAR BUILT' in data.columns:
+        data = data[data['YEAR BUILT'] > 0]
+    
     return data
 
 # Загружаем данные
@@ -128,16 +132,33 @@ selected_building_class = st.sidebar.selectbox(
     building_classes
 )
 
-# Фильтр по году постройки
+# Фильтр по году постройки (ИСПРАВЛЕНО)
 if 'YEAR BUILT' in df.columns:
-    min_year = int(df['YEAR BUILT'].min())
-    max_year = int(df['YEAR BUILT'].max())
-    year_range = st.sidebar.slider(
-        COLUMN_TRANSLATIONS.get('YEAR BUILT', 'Год постройки'),
-        min_value=min_year,
-        max_value=max_year,
-        value=(min_year, max_year)
-    )
+    # Фильтруем только корректные годы (> 0)
+    valid_years = df[df['YEAR BUILT'] > 0]['YEAR BUILT']
+    
+    if not valid_years.empty:
+        min_year = int(valid_years.min())
+        max_year = int(valid_years.max())
+        
+        # Проверяем, что минимальный год разумен (не раньше 1700)
+        min_year = max(min_year, 1700)
+        
+        year_range = st.sidebar.slider(
+            COLUMN_TRANSLATIONS.get('YEAR BUILT', 'Год постройки'),
+            min_value=min_year,
+            max_value=max_year,
+            value=(min_year, max_year)
+        )
+        
+        # Показываем информацию о корректных данных
+        total_records = len(df)
+        valid_year_records = len(df[df['YEAR BUILT'] > 0])
+        st.sidebar.caption(f"Корректных данных о годе постройки: {valid_year_records}/{total_records}")
+    else:
+        # Если нет корректных данных о годе постройки
+        year_range = (1800, 2023)  # Значения по умолчанию для Нью-Йорка
+        st.sidebar.warning("Нет корректных данных о годе постройки")
 
 # Фильтр по цене
 if 'SALE PRICE' in df.columns:
@@ -191,12 +212,6 @@ if page == "Таблица переводов":
     )
     
     st.markdown("---")
-    # st.info("""
-    # **Примечание:**  
-    # - Все графики и таблицы в дашборде используют русские названия колонок  
-    # - Фильтры также используют русские названия  
-    # - При экспорте данных используются оригинальные английские названия колонок
-    # """)
 
 # Страница 1: Визуализация исходных данных
 elif page == "Визуализация исходных данных":
@@ -215,8 +230,13 @@ elif page == "Визуализация исходных данных":
     
     with col3:
         if 'YEAR BUILT' in filtered_df.columns:
-            avg_year = filtered_df['YEAR BUILT'].mean()
-            st.metric("Средний год постройки", f"{avg_year:.0f}")
+            # Используем только корректные годы для расчета среднего
+            valid_years_filtered = filtered_df[filtered_df['YEAR BUILT'] > 0]['YEAR BUILT']
+            if not valid_years_filtered.empty:
+                avg_year = valid_years_filtered.mean()
+                st.metric("Средний год постройки", f"{avg_year:.0f}")
+            else:
+                st.metric("Средний год постройки", "Нет данных")
     
     with col4:
         unique_neighborhoods = filtered_df['NEIGHBORHOOD'].nunique()
@@ -328,14 +348,20 @@ elif page == "Визуализация исходных данных":
             st.plotly_chart(fig, use_container_width=True)
             
         elif viz_type == "Распределение по году постройки" and 'YEAR BUILT' in filtered_df.columns:
-            fig = px.histogram(
-                filtered_df_russian,
-                x=COLUMN_TRANSLATIONS.get('YEAR BUILT', 'Год постройки'),
-                nbins=30,
-                title="Распределение по году постройки",
-                labels={COLUMN_TRANSLATIONS.get('YEAR BUILT', 'Год постройки'): 'Год постройки'}
-            )
-            st.plotly_chart(fig, use_container_width=True)
+            # Фильтруем только корректные годы для визуализации
+            valid_year_data = filtered_df_russian[filtered_df_russian[COLUMN_TRANSLATIONS.get('YEAR BUILT', 'Год постройки')] > 0]
+            
+            if not valid_year_data.empty:
+                fig = px.histogram(
+                    valid_year_data,
+                    x=COLUMN_TRANSLATIONS.get('YEAR BUILT', 'Год постройки'),
+                    nbins=30,
+                    title="Распределение по году постройки",
+                    labels={COLUMN_TRANSLATIONS.get('YEAR BUILT', 'Год постройки'): 'Год постройки'}
+                )
+                st.plotly_chart(fig, use_container_width=True)
+            else:
+                st.warning("Нет корректных данных о годе постройки для визуализации")
     
     with col2:
         if viz_type == "Корреляционная матрица":
@@ -423,13 +449,23 @@ else:
     
     with col3:
         if 'SALE PRICE' in filtered_df.columns and 'GROSS SQUARE FEET' in filtered_df.columns:
-            price_per_sqft = (filtered_df['SALE PRICE'] / filtered_df['GROSS SQUARE FEET']).mean()
-            st.metric("Средняя цена за кв.фут ($)", f"{price_per_sqft:.2f}")
+            # Избегаем деления на ноль
+            valid_data = filtered_df[(filtered_df['SALE PRICE'] > 0) & (filtered_df['GROSS SQUARE FEET'] > 0)]
+            if not valid_data.empty:
+                price_per_sqft = (valid_data['SALE PRICE'] / valid_data['GROSS SQUARE FEET']).mean()
+                st.metric("Средняя цена за кв.фут ($)", f"{price_per_sqft:.2f}")
+            else:
+                st.metric("Средняя цена за кв.фут ($)", "Нет данных")
     
     with col4:
         if 'YEAR BUILT' in filtered_df.columns:
-            oldest_building = filtered_df['YEAR BUILT'].min()
-            st.metric("Самое старое здание (год)", f"{oldest_building:.0f}")
+            # Используем только корректные годы
+            valid_years_filtered = filtered_df[filtered_df['YEAR BUILT'] > 0]['YEAR BUILT']
+            if not valid_years_filtered.empty:
+                oldest_building = valid_years_filtered.min()
+                st.metric("Самое старое здание (год)", f"{oldest_building:.0f}")
+            else:
+                st.metric("Самое старое здание (год)", "Нет данных")
     
     st.markdown("---")
     
@@ -568,7 +604,13 @@ else:
             
             category_stats.columns = ['Ценовая категория', 'Количество', 'Средняя цена', 'Медианная цена', 'Средняя площадь']
             
-            category_stats['Цена за кв.фут'] = category_stats['Средняя цена'] / category_stats['Средняя площадь']
+            # Вычисляем цену за кв.фут только для строк с корректной площадью
+            valid_area_mask = category_stats['Средняя площадь'] > 0
+            category_stats['Цена за кв.фут'] = np.where(
+                valid_area_mask,
+                category_stats['Средняя цена'] / category_stats['Средняя площадь'],
+                np.nan
+            )
             
             st.dataframe(
                 category_stats.style.format({
@@ -606,19 +648,6 @@ else:
                     price_change = ((recent_prices - older_prices) / older_prices) * 100
                     st.write(f"**Изменение цен**: {price_change:+.1f}% с начала 2017 года")
     
-    # with insight_col2:
-    #     st.markdown("##### Рекомендации для анализа:")
-        
-    #     insights = [
-    #         "Рассмотрите инвестиции в районы с растущей медианной ценой",
-    #         "Обратите внимание на новые постройки - они часто имеют более высокую стоимость за кв.фут",
-    #         "Сравните ROI разных типов зданий (жилые vs коммерческие)",
-    #         "Проанализируйте сезонность продаж для оптимального времени покупки/продажи"
-    #     ]
-        
-    #     for i, insight in enumerate(insights, 1):
-    #         st.write(f"{i}. {insight}")
-    
     # Дополнительные опции анализа
     st.markdown("---")
     st.subheader("Дополнительные опции анализа")
@@ -630,16 +659,20 @@ else:
             
             # Пример дополнительного анализа
             if 'SALE PRICE' in filtered_df.columns and 'GROSS SQUARE FEET' in filtered_df.columns:
-                # Линейная регрессия (упрощенная)
-                correlation = filtered_df['SALE PRICE'].corr(filtered_df['GROSS SQUARE FEET'])
-                st.write(f"**Корреляция цена-площадь**: {correlation:.3f}")
-                
-                if correlation > 0.7:
-                    st.info("Сильная положительная корреляция: цена сильно зависит от площади")
-                elif correlation > 0.3:
-                    st.warning("Умеренная корреляция: площадь влияет на цену, но есть другие факторы")
+                # Фильтруем только корректные данные
+                valid_corr_data = filtered_df[(filtered_df['SALE PRICE'] > 0) & (filtered_df['GROSS SQUARE FEET'] > 0)]
+                if not valid_corr_data.empty:
+                    correlation = valid_corr_data['SALE PRICE'].corr(valid_corr_data['GROSS SQUARE FEET'])
+                    st.write(f"**Корреляция цена-площадь**: {correlation:.3f}")
+                    
+                    if correlation > 0.7:
+                        st.info("Сильная положительная корреляция: цена сильно зависит от площади")
+                    elif correlation > 0.3:
+                        st.warning("Умеренная корреляция: площадь влияет на цену, но есть другие факторы")
+                    else:
+                        st.info("Слабая корреляция: цена мало зависит от площади")
                 else:
-                    st.info("Слабая корреляция: цена мало зависит от площади")
+                    st.warning("Недостаточно данных для анализа корреляции")
 
 # Информация в футере
 st.sidebar.markdown("---")
