@@ -178,6 +178,21 @@ if 'SALE PRICE' in df.columns:
 # Создаем DataFrame с русскими названиями для отображения
 filtered_df_russian = translate_columns(filtered_df.copy())
 
+if all(col in filtered_df.columns for col in ['SALE PRICE', 'GROSS SQUARE FEET']):
+    # Цена за квадратный фут
+    filtered_df['PRICE_PER_SQFT'] = filtered_df['SALE PRICE'] / filtered_df['GROSS SQUARE FEET']
+    filtered_df_russian['Цена за кв.фут'] = filtered_df['PRICE_PER_SQFT']
+    
+if all(col in filtered_df.columns for col in ['SALE PRICE', 'TOTAL UNITS']):
+    # Цена за единицу (для многоквартирных домов)
+    filtered_df['PRICE_PER_UNIT'] = filtered_df['SALE PRICE'] / filtered_df['TOTAL UNITS'].replace(0, np.nan)
+    filtered_df_russian['Цена за единицу'] = filtered_df['PRICE_PER_UNIT']
+    
+if 'YEAR BUILT' in filtered_df.columns:
+    # Возраст здания
+    filtered_df['BUILDING_AGE'] = datetime.now().year - filtered_df['YEAR BUILT']
+    filtered_df_russian['Возраст здания'] = filtered_df['BUILDING_AGE']
+
 # Страница 3: Таблица переводов
 if page == "Таблица переводов":
     st.title("Таблица переводов названий колонок")
@@ -410,8 +425,8 @@ else:
     # Разделы анализа
     analysis_section = st.selectbox(
         "Выберите раздел анализа:",
-        ["Обзор рынка", "Анализ по типам зданий", "Географический анализ", 
-         "Прогнозный анализ"]
+        ["📈 Обзор рынка", "🏢 Анализ по типам зданий", "🗺️ Географический анализ", 
+         "💰 Анализ доходности", "⚖️ Анализ спроса и предложения", "🔮 Прогнозный анализ"]
     )
     
     # Секция 1: Обзор рынка
@@ -684,6 +699,231 @@ else:
                     st.write("**Топ-10 самых доступных районов:**")
                     for idx, (neighborhood, row) in enumerate(affordable_neighborhoods.iterrows(), 1):
                         st.write(f"{idx}. {neighborhood}: ${row['Средняя цена']:,.0f}")
+    
+    # Секция 4: Анализ доходности
+    elif analysis_section == "💰 Анализ доходности":
+        st.subheader("Анализ доходности недвижимости")
+        
+        # Создаем дополнительные метрики для анализа доходности
+        if all(col in filtered_df.columns for col in ['SALE PRICE', 'GROSS SQUARE FEET', 'TOTAL UNITS', 'YEAR BUILT']):
+            # Цена за кв.фут
+            filtered_df['PRICE_PER_SQFT'] = filtered_df['SALE PRICE'] / filtered_df['GROSS SQUARE FEET']
+            
+            # Цена за единицу (для многоквартирных домов)
+            filtered_df['PRICE_PER_UNIT'] = filtered_df['SALE PRICE'] / filtered_df['TOTAL UNITS'].replace(0, np.nan)
+            
+            # Возраст здания
+            filtered_df['BUILDING_AGE'] = datetime.now().year - filtered_df['YEAR BUILT']
+            
+            col1, col2, col3, col4 = st.columns(4)
+            
+            with col1:
+                avg_price_sqft = filtered_df['PRICE_PER_SQFT'].mean()
+                st.metric("Средняя цена за кв.фут", f"${avg_price_sqft:.2f}")
+            
+            with col2:
+                avg_price_unit = filtered_df['PRICE_PER_UNIT'].dropna().mean()
+                st.metric("Средняя цена за единицу", f"${avg_price_unit:,.0f}")
+            
+            with col3:
+                avg_age = filtered_df['BUILDING_AGE'].mean()
+                st.metric("Средний возраст зданий", f"{avg_age:.0f} лет")
+            
+            with col4:
+                if 'SALE DATE' in filtered_df.columns:
+                    # Расчет годовой доходности (упрощенный)
+                    filtered_df['SALE_YEAR'] = filtered_df['SALE DATE'].dt.year
+                    yearly_returns = filtered_df.groupby('SALE_YEAR')['PRICE_PER_SQFT'].mean().pct_change().mean() * 100
+                    st.metric("Среднегодовая доходность", f"{yearly_returns:.1f}%")
+            
+            st.markdown("---")
+            
+            # Анализ зависимости цены от возраста
+            st.subheader("Зависимость цены от возраста здания")
+            
+            # Группировка по возрастным категориям
+            age_bins = [0, 10, 20, 30, 50, 100, 200]
+            age_labels = ['0-10 лет', '11-20 лет', '21-30 лет', '31-50 лет', '51-100 лет', '100+ лет']
+            
+            filtered_df['AGE_CATEGORY'] = pd.cut(filtered_df['BUILDING_AGE'], bins=age_bins, labels=age_labels)
+            
+            age_analysis = filtered_df.groupby('AGE_CATEGORY').agg({
+                'PRICE_PER_SQFT': ['mean', 'median', 'count'],
+                'SALE PRICE': 'mean'
+            }).round(2)
+            
+            age_analysis.columns = ['Средняя цена за кв.фут', 'Медианная цена за кв.фут', 'Количество', 'Средняя цена']
+            
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                fig = px.bar(
+                    age_analysis.reset_index(),
+                    x='AGE_CATEGORY',
+                    y='Средняя цена за кв.фут',
+                    title='Стоимость квадратного фута по возрасту здания',
+                    color='Средняя цена за кв.фут',
+                    text='Средняя цена за кв.фут'
+                )
+                fig.update_traces(texttemplate='$%{text:.2f}', textposition='outside')
+                st.plotly_chart(fig, use_container_width=True)
+            
+            with col2:
+                fig = px.scatter(
+                    filtered_df.sample(min(1000, len(filtered_df))),
+                    x='BUILDING_AGE',
+                    y='PRICE_PER_SQFT',
+                    trendline="lowess",
+                    title='Зависимость цены за кв.фут от возраста здания',
+                    labels={'BUILDING_AGE': 'Возраст здания (лет)', 'PRICE_PER_SQFT': 'Цена за кв.фут ($)'},
+                    opacity=0.6
+                )
+                st.plotly_chart(fig, use_container_width=True)
+            
+            # Анализ ROI по типам зданий
+            st.subheader("Доходность по типам недвижимости")
+            
+            if 'BUILDING CLASS CATEGORY' in filtered_df.columns:
+                roi_analysis = filtered_df.groupby('BUILDING CLASS CATEGORY').agg({
+                    'PRICE_PER_SQFT': 'mean',
+                    'PRICE_PER_UNIT': 'mean',
+                    'SALE PRICE': ['count', 'median']
+                }).round(2)
+                
+                roi_analysis.columns = ['Цена за кв.фут', 'Цена за единицу', 'Количество продаж', 'Медианная цена']
+                roi_analysis = roi_analysis.sort_values('Цена за кв.фут', ascending=False).head(15)
+                
+                fig = px.scatter(
+                    roi_analysis.reset_index(),
+                    x='Цена за кв.фут',
+                    y='Цена за единицу',
+                    size='Количество продаж',
+                    color='Медианная цена',
+                    hover_name='BUILDING CLASS CATEGORY',
+                    title='Доходность по типам недвижимости',
+                    size_max=50
+                )
+                fig.update_layout(xaxis_tickformat='$,.2f', yaxis_tickformat='$,.0f')
+                st.plotly_chart(fig, use_container_width=True)
+    
+    # Секция 5: Анализ спроса и предложения
+    elif analysis_section == "⚖️ Анализ спроса и предложения":
+        st.subheader("Анализ спроса и предложения")
+        
+        # Анализ предложения по размерам
+        if 'GROSS SQUARE FEET' in filtered_df.columns:
+            # Создание категорий по площади
+            size_bins = [0, 500, 1000, 1500, 2000, 3000, 5000, 10000, float('inf')]
+            size_labels = ['<500 кв.фут', '500-1000', '1000-1500', '1500-2000', 
+                          '2000-3000', '3000-5000', '5000-10000', '>10000']
+            
+            filtered_df['SIZE_CATEGORY'] = pd.cut(filtered_df['GROSS SQUARE FEET'], 
+                                                  bins=size_bins, 
+                                                  labels=size_labels)
+            
+            size_analysis = filtered_df.groupby('SIZE_CATEGORY').agg({
+                'SALE PRICE': ['count', 'mean', 'median'],
+                'PRICE_PER_SQFT': 'mean'
+            }).round(2)
+            
+            size_analysis.columns = ['Количество', 'Средняя цена', 'Медианная цена', 'Цена за кв.фут']
+            
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                fig = px.bar(
+                    size_analysis.reset_index(),
+                    x='SIZE_CATEGORY',
+                    y='Количество',
+                    title='Распределение предложения по размерам',
+                    color='Средняя цена',
+                    text='Количество'
+                )
+                fig.update_traces(texttemplate='%{text:,}', textposition='outside')
+                fig.update_xaxes(tickangle=45)
+                st.plotly_chart(fig, use_container_width=True)
+            
+            with col2:
+                fig = px.line(
+                    size_analysis.reset_index(),
+                    x='SIZE_CATEGORY',
+                    y='Цена за кв.фут',
+                    title='Стоимость квадратного фута по размерам',
+                    markers=True
+                )
+                fig.update_xaxes(tickangle=45)
+                st.plotly_chart(fig, use_container_width=True)
+            
+            # Анализ ликвидности
+            st.subheader("Анализ ликвидности рынка")
+            
+            if 'SALE DATE' in filtered_df.columns:
+                # Ежемесячные объемы продаж
+                monthly_volume = filtered_df.groupby('SALE_MONTH').size().reset_index(name='Количество продаж')
+                monthly_volume.columns = ['Месяц', 'Количество продаж']
+                
+                # Расчет скорости продаж (упрощенный)
+                avg_monthly_sales = monthly_volume['Количество продаж'].mean()
+                total_inventory = len(filtered_df)
+                months_supply = total_inventory / avg_monthly_sales if avg_monthly_sales > 0 else 0
+                
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    st.metric("Среднемесячные продажи", f"{avg_monthly_sales:.0f}")
+                with col2:
+                    st.metric("Текущее предложение", f"{total_inventory:,}")
+                with col3:
+                    st.metric("Месяцев предложения", f"{months_supply:.1f}")
+                
+                # График сезонности
+                fig = px.line(
+                    monthly_volume,
+                    x='Месяц',
+                    y='Количество продаж',
+                    title='Сезонность продаж недвижимости',
+                    markers=True
+                )
+                fig.update_xaxes(tickangle=45)
+                st.plotly_chart(fig, use_container_width=True)
+            
+            # Анализ ценовых диапазонов
+            st.subheader("Анализ ценовых диапазонов")
+            
+            if 'SALE PRICE' in filtered_df.columns:
+                # Создание ценовых категорий
+                price_bins = [0, 500000, 1000000, 2000000, 5000000, 10000000, 50000000, float('inf')]
+                price_labels = ['<$500K', '$500K-$1M', '$1M-$2M', '$2M-$5M', '$5M-$10M', '$10M-$50M', '>$50M']
+                
+                filtered_df['PRICE_RANGE'] = pd.cut(filtered_df['SALE PRICE'], bins=price_bins, labels=price_labels)
+                
+                price_range_analysis = filtered_df.groupby('PRICE_RANGE').agg({
+                    'SALE PRICE': 'count',
+                    'GROSS SQUARE FEET': 'mean',
+                    'PRICE_PER_SQFT': 'mean'
+                }).round(2)
+                
+                price_range_analysis.columns = ['Количество', 'Средняя площадь', 'Цена за кв.фут']
+                
+                fig = make_subplots(
+                    rows=1, cols=2,
+                    subplot_titles=('Распределение по ценовым диапазонам', 'Стоимость кв.фута по диапазонам'),
+                    shared_xaxes=True
+                )
+                
+                fig.add_trace(
+                    go.Bar(x=price_range_analysis.index, y=price_range_analysis['Количество'], 
+                          name='Количество', marker_color='lightblue'),
+                    row=1, col=1
+                )
+                
+                fig.add_trace(
+                    go.Scatter(x=price_range_analysis.index, y=price_range_analysis['Цена за кв.фут'],
+                              name='Цена за кв.фут', line=dict(color='red', width=3)),
+                    row=1, col=2
+                )
+                
+                fig.update_layout(height=400, showlegend=True)
+                st.plotly_chart(fig, use_container_width=True)
     
     # Секция 6: Прогнозный анализ
     elif analysis_section == "🔮 Прогнозный анализ":
