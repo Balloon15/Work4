@@ -537,37 +537,53 @@ elif page == "Анализ рынка":
             st.plotly_chart(fig, use_container_width=True)
     
     elif analysis_type == "Стоимость квадратного фута":
-        st.subheader("Анализ стоимости квадратного фута")
+    st.subheader("Анализ стоимости квадратного фута")
+    
+    if 'PRICE_PER_SQFT' in filtered_df.columns:
+        # Удаляем выбросы в цене за кв.фут
+        q1 = filtered_df['PRICE_PER_SQFT'].quantile(0.01)
+        q3 = filtered_df['PRICE_PER_SQFT'].quantile(0.99)
+        price_per_sqft_filtered = filtered_df[(filtered_df['PRICE_PER_SQFT'] >= q1) & 
+                                             (filtered_df['PRICE_PER_SQFT'] <= q3)]
         
-        if 'PRICE_PER_SQFT' in filtered_df.columns:
-            # Удаляем выбросы в цене за кв.фут
-            q1 = filtered_df['PRICE_PER_SQFT'].quantile(0.01)
-            q3 = filtered_df['PRICE_PER_SQFT'].quantile(0.99)
-            price_per_sqft_filtered = filtered_df[(filtered_df['PRICE_PER_SQFT'] >= q1) & 
-                                                 (filtered_df['PRICE_PER_SQFT'] <= q3)]
-            
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                fig = px.histogram(
-                    price_per_sqft_filtered,
-                    x='PRICE_PER_SQFT',
-                    nbins=50,
-                    title="Распределение цены за кв.фут",
-                    labels={'PRICE_PER_SQFT': 'Цена за кв.фут ($)'}
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            fig = px.histogram(
+                price_per_sqft_filtered,
+                x='PRICE_PER_SQFT',
+                nbins=50,
+                title="Распределение цены за кв.фут",
+                labels={'PRICE_PER_SQFT': 'Цена за кв.фут ($)'}
+            )
+            st.plotly_chart(fig, use_container_width=True)
+        
+        with col2:
+            # ИСПРАВЛЕНИЕ: Создаем BOROUGH_NAME если его нет
+            if 'BOROUGH' in filtered_df.columns:
+                # Создаем отображение для borough
+                borough_map = {
+                    1: 'Manhattan',
+                    2: 'Brooklyn', 
+                    3: 'Queens',
+                    4: 'Bronx',
+                    5: 'Staten Island'
+                }
+                
+                # Создаем временную колонку для группировки
+                temp_df = price_per_sqft_filtered.copy()
+                temp_df['BOROUGH_NAME_TEMP'] = temp_df['BOROUGH'].map(borough_map)
+                
+                # Группируем по временной колонке
+                borough_price_sqft = temp_df.groupby('BOROUGH_NAME_TEMP')['PRICE_PER_SQFT'].median().sort_values(ascending=False)
+                
+                fig = px.bar(
+                    x=borough_price_sqft.index,
+                    y=borough_price_sqft.values,
+                    title='Средняя цена за кв.фут по округам',
+                    labels={'x': 'Округ', 'y': 'Цена за кв.фут ($)'}
                 )
                 st.plotly_chart(fig, use_container_width=True)
-            
-            with col2:
-                if 'BOROUGH' in filtered_df.columns:
-                    borough_price_sqft = filtered_df.groupby('BOROUGH_NAME')['PRICE_PER_SQFT'].median().sort_values(ascending=False)
-                    fig = px.bar(
-                        x=borough_price_sqft.index,
-                        y=borough_price_sqft.values,
-                        title='Средняя цена за кв.фут по округам',
-                        labels={'x': 'Округ', 'y': 'Цена за кв.фут ($)'}
-                    )
-                    st.plotly_chart(fig, use_container_width=True)
     
     elif analysis_type == "Возраст vs Цена":
         st.subheader("Влияние возраста здания на цену")
