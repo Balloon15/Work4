@@ -999,46 +999,24 @@ elif page == "Прогнозные модели":
         if 'SALE PRICE' not in filtered_df.columns:
             st.error("В данных отсутствует информация о цене продажи.")
         else:
-            # Создаем копию данных для модели
+            # Создаем целевые категории
             classification_df = filtered_df.copy()
             
-            # УЛУЧШЕНИЕ 1: Используем более осмысленные границы категорий
-            st.write("**📊 Определение ценовых категорий...**")
-            
-            # Анализируем распределение цен для выбора границ
-            price_stats = classification_df['SALE PRICE'].describe()
-            st.write(f"Статистика цен: Медиана = ${price_stats['50%']:,.0f}, Среднее = ${price_stats['mean']:,.0f}")
-            
-            # УЛУЧШЕНИЕ 2: Используем квартили вместо терцилей для более сбалансированных категорий
-            price_25 = classification_df['SALE PRICE'].quantile(0.25)
-            price_50 = classification_df['SALE PRICE'].quantile(0.50)  # медиана
-            price_75 = classification_df['SALE PRICE'].quantile(0.75)
-            
-            # УЛУЧШЕНИЕ 3: Создаем 4 категории вместо 3 для лучшей дифференциации
-            price_bins = [0, price_25, price_50, price_75, classification_df['SALE PRICE'].max()]
-            price_labels = ['Бюджет', 'Стандарт', 'Премиум', 'Элитный']
+            # Определяем границы категорий
+            price_33 = classification_df['SALE PRICE'].quantile(0.33)
+            price_66 = classification_df['SALE PRICE'].quantile(0.66)
             
             classification_df['PRICE_CATEGORY'] = pd.cut(
                 classification_df['SALE PRICE'],
-                bins=price_bins,
-                labels=price_labels,
-                include_lowest=True
+                bins=[0, price_33, price_66, classification_df['SALE PRICE'].max()],
+                labels=['Дешевый', 'Средний', 'Дорогой']
             )
-            
-            st.info(f"""
-            **Границы категорий:**
-            - Бюджет: до ${price_25:,.0f}
-            - Стандарт: ${price_25:,.0f} - ${price_50:,.0f}
-            - Премиум: ${price_50:,.0f} - ${price_75:,.0f}
-            - Элитный: от ${price_75:,.0f}
-            """)
             
             # Преобразуем в числовой формат
             le = LabelEncoder()
             classification_df['PRICE_CATEGORY_ENCODED'] = le.fit_transform(classification_df['PRICE_CATEGORY'])
             
-            # УЛУЧШЕНИЕ 4: Балансировка классов
-            st.write("**⚖️ Балансировка классов...**")
+            # Анализ распределения категорий
             category_counts = classification_df['PRICE_CATEGORY'].value_counts()
             
             col1, col2 = st.columns(2)
@@ -1052,78 +1030,42 @@ elif page == "Прогнозные модели":
                     color_discrete_sequence=px.colors.qualitative.Set2
                 )
                 st.plotly_chart(fig, use_container_width=True)
-                
-                # Показываем дисбаланс
-                imbalance_ratio = category_counts.max() / category_counts.min()
-                if imbalance_ratio > 2:
-                    st.warning(f"Дисбаланс классов: {imbalance_ratio:.1f} раз")
             
             with col2:
                 # Характеристики по категориям
                 category_stats = classification_df.groupby('PRICE_CATEGORY').agg({
-                    'SALE PRICE': ['median', 'min', 'max', 'count'],
+                    'SALE PRICE': ['median', 'min', 'max'],
                     'GROSS SQUARE FEET': 'median',
                     'YEAR BUILT': 'median',
-                    'TOTAL UNITS': 'median',
-                    'PRICE_PER_SQFT': 'median'
+                    'TOTAL UNITS': 'median'
                 }).round(2)
                 
-                category_stats.columns = ['Медианная цена', 'Мин. цена', 'Макс. цена', 'Количество',
-                                         'Медианная площадь', 'Медианный год постройки', 
-                                         'Медианное кол-во единиц', 'Медианная цена за кв.фут']
+                category_stats.columns = ['Медианная цена', 'Минимальная цена', 'Максимальная цена',
+                                         'Медианная площадь', 'Медианный год постройки', 'Медианное кол-во единиц']
+                
+                category_stats['Цена за кв.фут'] = category_stats['Медианная цена'] / category_stats['Медианная площадь']
                 
                 st.write("**Характеристики по категориям:**")
                 st.dataframe(
                     category_stats.style.format({
                         'Медианная цена': '${:,.0f}',
-                        'Мин. цена': '${:,.0f}',
-                        'Макс. цена': '${:,.0f}',
-                        'Количество': '{:,.0f}',
+                        'Минимальная цена': '${:,.0f}',
+                        'Максимальная цена': '${:,.0f}',
                         'Медианная площадь': '{:,.0f}',
                         'Медианный год постройки': '{:.0f}',
                         'Медианное кол-во единиц': '{:.1f}',
-                        'Медианная цена за кв.фут': '${:.2f}'
+                        'Цена за кв.фут': '${:.2f}'
                     }),
-                    use_container_width=True,
-                    height=300
+                    use_container_width=True
                 )
             
             # Обучение модели классификации
             st.markdown("---")
-            st.subheader("🤖 Обучение улучшенной модели классификации")
+            st.subheader("🤖 Модель классификации")
             
-            # УЛУЧШЕНИЕ 5: Расширенный набор признаков
-            st.write("**🔍 Подготовка признаков...**")
-            
-            # Создаем дополнительные признаки
-            if 'GROSS SQUARE FEET' in classification_df.columns and 'TOTAL UNITS' in classification_df.columns:
-                classification_df['SQFT_PER_UNIT'] = classification_df['GROSS SQUARE FEET'] / classification_df['TOTAL UNITS'].replace(0, 1)
-            
-            if 'YEAR BUILT' in classification_df.columns:
-                classification_df['BUILDING_AGE'] = datetime.now().year - classification_df['YEAR BUILT']
-                classification_df['IS_HISTORIC'] = (classification_df['BUILDING_AGE'] > 100).astype(int)
-            
-            if all(col in classification_df.columns for col in ['GROSS SQUARE FEET', 'LAND SQUARE FEET']):
-                classification_df['BUILDING_TO_LAND_RATIO'] = classification_df['GROSS SQUARE FEET'] / classification_df['LAND SQUARE FEET'].replace(0, 1)
-            
-            # УЛУЧШЕНИЕ 6: Более релевантные признаки
-            features_class = [
-                'GROSS SQUARE FEET',        # Основная площадь
-                'BOROUGH',                   # Округ
-                'YEAR BUILT',                # Год постройки
-                'BUILDING_AGE',              # Возраст здания (новый признак)
-                'TOTAL UNITS',               # Количество единиц
-                'LAND SQUARE FEET',          # Площадь земли
-                'BUILDING CLASS CATEGORY',   # Тип здания
-                'SQFT_PER_UNIT',             # Площадь на единицу (новый признак)
-                'IS_HISTORIC',               # Историческое здание (новый признак)
-                'NEIGHBORHOOD',              # УЛУЧШЕНИЕ: Добавляем район (важнее округа!)
-            ]
-            
-            # Оставляем только существующие колонки
-            features_class = [f for f in features_class if f in classification_df.columns]
-            
-            st.write(f"**Используется {len(features_class)} признаков:** {', '.join(features_class[:5])}...")
+            # Выбираем признаки
+            features_class = ['GROSS SQUARE FEET', 'BOROUGH', 'YEAR BUILT', 
+                            'TOTAL UNITS', 'LAND SQUARE FEET', 'BUILDING CLASS CATEGORY']
             
             # Подготовка данных
             X_class = classification_df[features_class].copy()
@@ -1133,95 +1075,33 @@ elif page == "Прогнозные модели":
             X_class = X_class.dropna()
             y_class = y_class[X_class.index]
             
-            if len(X_class) < 100:
-                st.error(f"Недостаточно данных для обучения модели классификации. Доступно: {len(X_class)} записей")
+            if len(X_class) < 50:
+                st.error("Недостаточно данных для обучения модели классификации.")
             else:
-                # УЛУЧШЕНИЕ 7: Расширенное кодирование категориальных переменных
-                st.write("**🔄 Кодирование категориальных переменных...**")
-                
+                # Кодируем категориальные переменные
                 categorical_cols_class = X_class.select_dtypes(include=['object']).columns
-                
-                # Для признака NEIGHBORHOOD используем частотное кодирование вместо One-Hot
-                if 'NEIGHBORHOOD' in X_class.columns:
-                    # Частотное кодирование: заменяем названия районов на частоту их встречаемости
-                    neighborhood_freq = X_class['NEIGHBORHOOD'].value_counts(normalize=True)
-                    X_class['NEIGHBORHOOD_FREQ'] = X_class['NEIGHBORHOOD'].map(neighborhood_freq)
-                    X_class = X_class.drop('NEIGHBORHOOD', axis=1)
-                    categorical_cols_class = categorical_cols_class.drop('NEIGHBORHOOD')
-                
-                # One-Hot Encoding для остальных категориальных признаков
                 if len(categorical_cols_class) > 0:
                     X_class_encoded = pd.get_dummies(X_class, columns=categorical_cols_class, drop_first=True)
                 else:
                     X_class_encoded = X_class.copy()
                 
-                # УЛУЧШЕНИЕ 8: Масштабирование числовых признаков
-                st.write("**📏 Масштабирование признаков...**")
-                
-                from sklearn.preprocessing import StandardScaler
-                
-                # Масштабируем только числовые признаки
-                numeric_cols = X_class_encoded.select_dtypes(include=[np.number]).columns
-                scaler = StandardScaler()
-                X_class_encoded[numeric_cols] = scaler.fit_transform(X_class_encoded[numeric_cols])
-                
-                # Разделяем данные с стратификацией
+                # Разделяем данные
                 X_train_class, X_test_class, y_train_class, y_test_class = train_test_split(
-                    X_class_encoded, y_class, 
-                    test_size=0.2, 
-                    random_state=42, 
-                    stratify=y_class
+                    X_class_encoded, y_class, test_size=0.2, random_state=42, stratify=y_class
                 )
                 
-                st.write(f"**📊 Размер данных:** Обучающая выборка: {len(X_train_class)}, Тестовая: {len(X_test_class)}")
+                # Обучаем модель
+                st.write("**Обучение модели Random Forest Classifier...**")
+                model_class = RandomForestClassifier(
+                    n_estimators=100,
+                    max_depth=10,
+                    random_state=42,
+                    class_weight='balanced'
+                )
                 
-                # УЛУЧШЕНИЕ 9: Используем более мощный алгоритм XGBoost
-                st.write("**🎯 Обучение модели XGBoost...**")
-                
-                try:
-                    from xgboost import XGBClassifier
-                    
-                    # УЛУЧШЕНИЕ 10: Настройка гиперпараметров
-                    model_class = XGBClassifier(
-                        n_estimators=200,           # Больше деревьев
-                        max_depth=7,                # Оптимальная глубина
-                        learning_rate=0.1,          # Скорость обучения
-                        random_state=42,
-                        use_label_encoder=False,
-                        eval_metric='mlogloss',
-                        subsample=0.8,              # Для уменьшения переобучения
-                        colsample_bytree=0.8,       # Случайный выбор признаков
-                        reg_alpha=0.1,              # L1 регуляризация
-                        reg_lambda=1.0,             # L2 регуляризация
-                        scale_pos_weight='balanced' # Балансировка классов
-                    )
-                    
-                    # Обучаем модель
-                    model_class.fit(
-                        X_train_class, 
-                        y_train_class,
-                        eval_set=[(X_test_class, y_test_class)],
-                        verbose=False
-                    )
-                    
-                except ImportError:
-                    st.warning("XGBoost не установлен. Используем Random Forest.")
-                    # Fallback на Random Forest с улучшенными параметрами
-                    model_class = RandomForestClassifier(
-                        n_estimators=200,
-                        max_depth=15,
-                        min_samples_split=5,
-                        min_samples_leaf=2,
-                        random_state=42,
-                        class_weight='balanced',
-                        bootstrap=True,
-                        max_features='sqrt',  # Используем sqrt от числа признаков
-                        n_jobs=-1
-                    )
-                    model_class.fit(X_train_class, y_train_class)
+                model_class.fit(X_train_class, y_train_class)
                 
                 # Оценка модели
-                st.write("**📈 Оценка модели...**")
                 y_pred_class = model_class.predict(X_test_class)
                 y_pred_proba = model_class.predict_proba(X_test_class)
                 
@@ -1233,41 +1113,15 @@ elif page == "Прогнозные модели":
                 recall = recall_score(y_test_class, y_pred_class, average='weighted')
                 f1 = f1_score(y_test_class, y_pred_class, average='weighted')
                 
-                # УЛУЧШЕНИЕ 11: Добавляем более детальные метрики
-                from sklearn.metrics import classification_report
-                
-                st.subheader("📊 Детальная оценка модели")
-                
                 col1, col2, col3, col4 = st.columns(4)
                 with col1:
-                    st.metric("Accuracy", f"{accuracy:.3f}", 
-                             f"{(accuracy-0.582)*100:+.1f}%" if hasattr(st, 'previous_accuracy') else None)
+                    st.metric("Accuracy", f"{accuracy:.3f}")
                 with col2:
                     st.metric("Precision", f"{precision:.3f}")
                 with col3:
                     st.metric("Recall", f"{recall:.3f}")
                 with col4:
                     st.metric("F1-Score", f"{f1:.3f}")
-                
-                # Показываем улучшение
-                if accuracy > 0.582:
-                    st.success(f"✅ Улучшение точности на {(accuracy-0.582)*100:.1f}%")
-                
-                # Детальный отчет по классам
-                st.subheader("📋 Детальный отчет по категориям")
-                report_dict = classification_report(y_test_class, y_pred_class, 
-                                                   target_names=le.classes_, output_dict=True)
-                report_df = pd.DataFrame(report_dict).transpose()
-                
-                st.dataframe(
-                    report_df.style.format({
-                        'precision': '{:.3f}',
-                        'recall': '{:.3f}',
-                        'f1-score': '{:.3f}',
-                        'support': '{:.0f}'
-                    }).highlight_max(subset=['precision', 'recall', 'f1-score'], color='lightgreen'),
-                    use_container_width=True
-                )
                 
                 # Матрица ошибок
                 st.subheader("📊 Матрица ошибок")
@@ -1289,26 +1143,7 @@ elif page == "Прогнозные модели":
                 )
                 st.plotly_chart(fig, use_container_width=True)
                 
-                # Анализ ошибок
-                st.subheader("🔍 Анализ основных ошибок")
-                
-                # Находим наиболее частые ошибки
-                error_mask = y_test_class != y_pred_class
-                if error_mask.any():
-                    error_samples = X_test_class[error_mask].copy()
-                    error_samples['TRUE'] = le.inverse_transform(y_test_class[error_mask])
-                    error_samples['PRED'] = le.inverse_transform(y_pred_class[error_mask])
-                    error_samples['CONFIDENCE'] = np.max(y_pred_proba[error_mask], axis=1)
-                    
-                    # Самые частые ошибки
-                    common_errors = error_samples.groupby(['TRUE', 'PRED']).size().reset_index(name='COUNT')
-                    common_errors = common_errors.sort_values('COUNT', ascending=False).head(5)
-                    
-                    st.write("**Наиболее частые ошибки:**")
-                    for _, row in common_errors.iterrows():
-                        st.write(f"- {row['TRUE']} → {row['PRED']}: {row['COUNT']} случаев")
-                
-                # Важность признаков
+                # Важность признаков для классификации
                 st.subheader("📈 Важность признаков для классификации")
                 
                 if hasattr(model_class, 'feature_importances_'):
@@ -1329,16 +1164,7 @@ elif page == "Прогнозные модели":
                 
                 # Интерактивная классификация
                 st.markdown("---")
-                st.subheader("🔮 Интерактивная классификация объекта")
-                
-                st.info("""
-                **Улучшения модели:**
-                1. 4 категории вместо 3
-                2. Добавлены новые признаки (возраст здания, площадь на единицу)
-                3. Использован XGBoost вместо Random Forest
-                4. Масштабирование признаков
-                5. Частотное кодирование районов
-                """)
+                st.subheader("🔍 Интерактивная классификация объекта")
                 
                 col1, col2 = st.columns(2)
                 
@@ -1349,7 +1175,7 @@ elif page == "Прогнозные модели":
                         max_value=100000,
                         value=1500,
                         step=100,
-                        key='class_sqft_improved'
+                        key='class_sqft'
                     )
                     
                     class_borough = st.selectbox(
@@ -1362,7 +1188,7 @@ elif page == "Прогнозные модели":
                             4: 'Бронкс',
                             5: 'Стэтен-Айленд'
                         }.get(x, x),
-                        key='class_borough_improved'
+                        key='class_borough'
                     )
                     
                     class_year = st.number_input(
@@ -1371,17 +1197,8 @@ elif page == "Прогнозные модели":
                         max_value=datetime.now().year,
                         value=1990,
                         step=1,
-                        key='class_year_improved'
+                        key='class_year'
                     )
-                    
-                    # Добавляем выбор района
-                    if 'NEIGHBORHOOD' in classification_df.columns:
-                        neighborhoods = sorted(classification_df['NEIGHBORHOOD'].unique())
-                        class_neighborhood = st.selectbox(
-                            "Район (важнейший признак!)",
-                            options=neighborhoods,
-                            key='class_neighborhood_improved'
-                        )
                 
                 with col2:
                     class_units = st.number_input(
@@ -1390,7 +1207,7 @@ elif page == "Прогнозные модели":
                         max_value=1000,
                         value=2,
                         step=1,
-                        key='class_units_improved'
+                        key='class_units'
                     )
                     
                     class_land_sqft = st.number_input(
@@ -1399,7 +1216,7 @@ elif page == "Прогнозные модели":
                         max_value=1000000,
                         value=2000,
                         step=100,
-                        key='class_land_sqft_improved'
+                        key='class_land_sqft'
                     )
                     
                     if 'BUILDING CLASS CATEGORY' in classification_df.columns:
@@ -1407,10 +1224,10 @@ elif page == "Прогнозные модели":
                         class_building_type = st.selectbox(
                             "Тип здания",
                             options=class_building_types,
-                            key='class_building_type_improved'
+                            key='class_building_type'
                         )
                 
-                if st.button("Классифицировать объект", key='classify_improved'):
+                if st.button("Классифицировать объект"):
                     # Создаем DataFrame с введенными данными
                     input_class_data = pd.DataFrame({
                         'GROSS SQUARE FEET': [class_sqft],
@@ -1418,23 +1235,8 @@ elif page == "Прогнозные модели":
                         'YEAR BUILT': [class_year],
                         'TOTAL UNITS': [class_units],
                         'LAND SQUARE FEET': [class_land_sqft],
-                        'BUILDING CLASS CATEGORY': [class_building_type],
-                        'NEIGHBORHOOD': [class_neighborhood] if 'class_neighborhood' in locals() else ['Unknown']
+                        'BUILDING CLASS CATEGORY': [class_building_type]
                     })
-                    
-                    # Добавляем производные признаки
-                    input_class_data['BUILDING_AGE'] = datetime.now().year - input_class_data['YEAR BUILT']
-                    input_class_data['IS_HISTORIC'] = (input_class_data['BUILDING_AGE'] > 100).astype(int)
-                    input_class_data['SQFT_PER_UNIT'] = input_class_data['GROSS SQUARE FEET'] / input_class_data['TOTAL UNITS']
-                    
-                    if 'LAND SQUARE FEET' in input_class_data.columns:
-                        input_class_data['BUILDING_TO_LAND_RATIO'] = input_class_data['GROSS SQUARE FEET'] / input_class_data['LAND SQUARE FEET']
-                    
-                    # Частотное кодирование района
-                    if 'NEIGHBORHOOD' in input_class_data.columns and 'NEIGHBORHOOD' in classification_df.columns:
-                        neighborhood_freq = classification_df['NEIGHBORHOOD'].value_counts(normalize=True)
-                        input_class_data['NEIGHBORHOOD_FREQ'] = input_class_data['NEIGHBORHOOD'].map(neighborhood_freq).fillna(0)
-                        input_class_data = input_class_data.drop('NEIGHBORHOOD', axis=1)
                     
                     # Применяем те же преобразования
                     input_class_processed = pd.get_dummies(input_class_data, drop_first=True)
@@ -1446,19 +1248,15 @@ elif page == "Прогнозные модели":
                     
                     input_class_processed = input_class_processed[X_class_encoded.columns]
                     
-                    # Масштабируем
-                    input_class_processed[numeric_cols] = scaler.transform(input_class_processed[numeric_cols])
-                    
                     # Делаем предсказание
                     predicted_class = model_class.predict(input_class_processed)[0]
                     predicted_proba = model_class.predict_proba(input_class_processed)[0]
                     
                     # Определяем ценовой диапазон для предсказанной категории
                     category_ranges = {
-                        0: (0, price_25),
-                        1: (price_25, price_50),
-                        2: (price_50, price_75),
-                        3: (price_75, classification_df['SALE PRICE'].max())
+                        0: (0, price_33),
+                        1: (price_33, price_66),
+                        2: (price_66, classification_df['SALE PRICE'].max())
                     }
                     
                     min_price, max_price = category_ranges[predicted_class]
@@ -1469,13 +1267,10 @@ elif page == "Прогнозные модели":
                     st.success(f"""
                     **📋 Результат классификации: {category_name}**
                     
-                    **Уверенность модели:** {predicted_proba[predicted_class]*100:.1f}%
-                    
                     Вероятности по категориям:
-                    - Бюджет: {predicted_proba[0]*100:.1f}%
-                    - Стандарт: {predicted_proba[1]*100:.1f}%
-                    - Премиум: {predicted_proba[2]*100:.1f}%
-                    - Элитный: {predicted_proba[3]*100:.1f}%
+                    - Дешевый: {predicted_proba[0]*100:.1f}%
+                    - Средний: {predicted_proba[1]*100:.1f}%
+                    - Дорогой: {predicted_proba[2]*100:.1f}%
                     
                     **Ожидаемый ценовой диапазон:**
                     - От ${min_price:,.0f} до ${max_price:,.0f}
@@ -1484,7 +1279,7 @@ elif page == "Прогнозные модели":
                     **Типичные характеристики категории "{category_name}":**
                     - Площадь: {category_stats.loc[category_name, 'Медианная площадь']:,.0f} кв.фут
                     - Год постройки: {int(category_stats.loc[category_name, 'Медианный год постройки'])}
-                    - Цена за кв.фут: ${category_stats.loc[category_name, 'Медианная цена за кв.фут']:.2f}
+                    - Цена за кв.фут: ${category_stats.loc[category_name, 'Цена за кв.фут']:.2f}
                     """)
                     
                     # Визуализация вероятностей
@@ -1503,16 +1298,3 @@ elif page == "Прогнозные модели":
                     )
                     fig.update_traces(texttemplate='%{text:.1f}%', textposition='outside')
                     st.plotly_chart(fig, use_container_width=True)
-                    
-                    # Рекомендации на основе классификации
-                    st.subheader("💡 Рекомендации")
-                    
-                    recommendations = {
-                        'Бюджет': "Отличный вариант для первого жилья или инвестиций. Высокая ликвидность.",
-                        'Стандарт': "Сбалансированное предложение. Подходит для семьи или сдачи в аренду.",
-                        'Премиум': "Комфортное жилье в хороших районах. Хорошая инвестиция.",
-                        'Элитный': "Эксклюзивные объекты. Меньшая ликвидность, но высокая престижность."
-                    }
-                    
-                    if category_name in recommendations:
-                        st.info(recommendations[category_name])
