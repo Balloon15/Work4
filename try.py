@@ -562,7 +562,7 @@ elif page == "Анализ рынка":
                 fig.update_layout(yaxis_tickformat='$,.0f')
                 st.plotly_chart(fig, use_container_width=True)
         elif analysis_type == "Стоимость квадратного фута":
-    st.subheader("Анализ стоимости квадратного фута")
+            st.subheader("Анализ стоимости квадратного фута")
     
     if 'PRICE_PER_SQFT' in filtered_df.columns and not filtered_df['PRICE_PER_SQFT'].isna().all():
         # Создаем копию для анализа
