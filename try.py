@@ -72,44 +72,150 @@ def reverse_translate_column(russian_name):
     return russian_name
 
 # Загрузка данных с очисткой выбросов
+# Загрузка данных с улучшенной очисткой выбросов
 @st.cache_data
 def load_data():
     data = pd.read_csv("nyc-rolling-sales.csv")
     
-    # 1. ВМЕСТО жесткого удаления < $10K → ВЕРИФИКАЦИЯ
-    def validate_price(price):
-        if price <= 0:
-            return np.nan  # Помечаем как пропуск
-        elif 0 < price < 1000:  # Слишком мало для любой недвижимости
-            return np.nan
-        elif 1000 <= price < 10000:  # Возможны гаражи/доли
-            # Проверяем тип недвижимости
-            if data['BUILDING CLASS CATEGORY'] in ['GARAGE', 'VACANT LAND']:
-                return price  # Оставляем
-            else:
-                return np.nan  # Для жилья - удаляем
-        else:
-            return price  # Нормальная цена
+    # Сохраняем информацию об исходном объеме
+    original_rows = len(data)
     
-    data['SALE PRICE'] = data['SALE PRICE'].apply(validate_price)
+    numeric_columns = ['SALE PRICE', 'LAND SQUARE FEET', 'GROSS SQUARE FEET', 
+                       'YEAR BUILT', 'RESIDENTIAL UNITS', 'COMMERCIAL UNITS', 
+                       'TOTAL UNITS', 'ZIP CODE']
     
-    # 2. ВМЕСТО IQR → Логарифмирование + разумные границы
-    data['LOG_PRICE'] = np.log1p(data['SALE PRICE'])
+    for col in numeric_columns:
+        if col in data.columns:
+            data[col] = pd.to_numeric(data[col].replace(' -  ', np.nan).replace(' - ', np.nan).replace(' -', np.nan), errors='coerce')
     
-    # Удаляем только ЭКСТРЕМАЛЬНЫЕ выбросы (0.1% с обеих сторон)
-    lower_bound = data['LOG_PRICE'].quantile(0.001)
-    upper_bound = data['LOG_PRICE'].quantile(0.999)
-    data = data[(data['LOG_PRICE'] >= lower_bound) & 
-                (data['LOG_PRICE'] <= upper_bound)]
+    if 'SALE DATE' in data.columns:
+        data['SALE DATE'] = pd.to_datetime(data['SALE DATE'], errors='coerce')
     
-    # 3. ВМЕСТО удаления строк с пропусками → ИМПУТАЦИЯ
-    for col in ['GROSS SQUARE FEET', 'LAND SQUARE FEET']:
-        # Заполняем медианой по району и типу здания
-        data[col] = data.groupby(['BOROUGH', 'BUILDING CLASS CATEGORY'])[col]\
-                       .transform(lambda x: x.fillna(x.median()))
+    # ИСПРАВЛЕННАЯ ОЧИСТКА: БОЛЕЕ РАЗУМНЫЙ ПОДХОД
+    
+    # 1. Создаем BOROUGH_NAME для использования в фильтрах
+    if 'BOROUGH' in data.columns:
+        borough_names = {
+            1: 'Manhattan',
+            2: 'Brooklyn', 
+            3: 'Queens',
+            4: 'Bronx',
+            5: 'Staten Island'
+        }
+        data['BOROUGH_NAME'] = data['BOROUGH'].map(borough_names)
+    
+    # 2. УЛУЧШЕННАЯ ОЧИСТКА ЦЕН (сохраняем больше данных)
+    if 'SALE PRICE' in data.columns:
+        # Удаляем только явно некорректные значения (<= 0)
+        data = data[data['SALE PRICE'] > 0]
+        
+        # Вместо жесткой границы $10K используем статистический подход
+        # Сохраняем 99% данных (удаляем только 0.5% с каждой стороны)
+        price_005 = data['SALE PRICE'].quantile(0.005)  # 0.5-й процентиль
+        price_995 = data['SALE PRICE'].quantile(0.995)  # 99.5-й процентиль
+        
+        # Но устанавливаем разумный минимум для Нью-Йорка
+        reasonable_min_price = 1000  # $1,000 вместо $10,000
+        final_min_price = max(price_005, reasonable_min_price)
+        
+        # Устанавливаем разумный максимум
+        reasonable_max_price = 100_000_000  # $100M вместо $500M
+        final_max_price = min(price_995, reasonable_max_price)
+        
+        data = data[(data['SALE PRICE'] >= final_min_price) & 
+                   (data['SALE PRICE'] <= final_max_price)]
+        
+        # Создаем логарифмированную версию цены для анализа
+        data['LOG_SALE_PRICE'] = np.log1p(data['SALE PRICE'])
+    
+    # 3. УЛУЧШЕННАЯ ОЧИСТКА ГОДА ПОСТРОЙКИ
+    if 'YEAR BUILT' in data.columns:
+        current_year = datetime.now().year
+        # Сохраняем здания с 1600 года (исторические здания Нью-Йорка)
+        data = data[(data['YEAR BUILT'] >= 1600) & 
+                   (data['YEAR BUILT'] <= current_year)]
+        
+        # Вместо удаления нулевых - заполняем медианой по округу
+        if data['YEAR BUILT'].isna().any() and 'BOROUGH_NAME' in data.columns:
+            median_year_by_borough = data.groupby('BOROUGH_NAME')['YEAR BUILT'].median()
+            data['YEAR BUILT'] = data.apply(
+                lambda row: median_year_by_borough[row['BOROUGH_NAME']] 
+                if pd.isna(row['YEAR BUILT']) else row['YEAR BUILT'],
+                axis=1
+            )
+    
+    # 4. УЛУЧШЕННАЯ ОЧИСТКА ПЛОЩАДИ
+    for area_col in ['GROSS SQUARE FEET', 'LAND SQUARE FEET']:
+        if area_col in data.columns:
+            # Удаляем только отрицательные значения
+            data = data[data[area_col] >= 0]
+            
+            # Вместо жесткой границы 1M кв.фут используем 99.5% процентиль
+            if data[area_col].notna().any():
+                area_995 = data[area_col].quantile(0.995)
+                data = data[(data[area_col] <= area_995) | (data[area_col].isna())]
+            
+            # Создаем логарифмированную версию
+            data[f'LOG_{area_col}'] = np.log1p(data[area_col].fillna(0))
+    
+    # 5. ИМПУТАЦИЯ ПРОПУСКОВ вместо удаления строк
+    numeric_cols_for_imputation = ['GROSS SQUARE FEET', 'LAND SQUARE FEET', 
+                                  'YEAR BUILT', 'TOTAL UNITS', 'RESIDENTIAL UNITS', 
+                                  'COMMERCIAL UNITS']
+    
+    for col in numeric_cols_for_imputation:
+        if col in data.columns and data[col].isna().any():
+            # Заполняем медианой по округу и типу здания
+            if 'BOROUGH_NAME' in data.columns and 'BUILDING CLASS CATEGORY' in data.columns:
+                # Сначала по округу и типу
+                data[col] = data.groupby(['BOROUGH_NAME', 'BUILDING CLASS CATEGORY'])[col]\
+                               .transform(lambda x: x.fillna(x.median()))
+                # Затем по округу
+                data[col] = data.groupby('BOROUGH_NAME')[col]\
+                               .transform(lambda x: x.fillna(x.median()))
+            # В крайнем случае - общей медианой
+            data[col] = data[col].fillna(data[col].median())
+    
+    # 6. УЛУЧШЕННЫЙ РАСЧЕТ ЦЕНЫ ЗА КВ.ФУТ
+    if all(col in data.columns for col in ['SALE PRICE', 'GROSS SQUARE FEET']):
+        data['PRICE_PER_SQFT'] = data['SALE PRICE'] / data['GROSS SQUARE FEET'].replace(0, np.nan)
+        
+        # Очистка выбросов в цене за кв.фут
+        if data['PRICE_PER_SQFT'].notna().any():
+            # Сохраняем 98% данных
+            pq1 = data['PRICE_PER_SQFT'].quantile(0.01)
+            pq3 = data['PRICE_PER_SQFT'].quantile(0.99)
+            data = data[(data['PRICE_PER_SQFT'] >= pq1) & 
+                       (data['PRICE_PER_SQFT'] <= pq3) | 
+                       (data['PRICE_PER_SQFT'].isna())]
+    
+    # 7. СОЗДАЕМ ПРОИЗВОДНЫЕ ПРИЗНАКИ для улучшения анализа
+    if 'YEAR BUILT' in data.columns:
+        current_year = datetime.now().year
+        data['BUILDING_AGE'] = current_year - data['YEAR BUILT']
+        data['IS_HISTORIC'] = (data['BUILDING_AGE'] > 100).astype(int)
+    
+    if all(col in data.columns for col in ['GROSS SQUARE FEET', 'TOTAL UNITS']):
+        data['SQFT_PER_UNIT'] = data['GROSS SQUARE FEET'] / data['TOTAL UNITS'].replace(0, 1)
+    
+    # 8. Удаляем дубликаты по ключевым полям
+    data = data.drop_duplicates(subset=['ADDRESS', 'SALE DATE', 'SALE PRICE'], keep='first')
+    
+    # 9. ИНФОРМАЦИЯ ОБ ОЧИСТКЕ (для отображения)
+    final_rows = len(data)
+    retention_rate = (final_rows / original_rows) * 100
+    
+    # Сохраняем статистику в глобальной переменной для отображения
+    st.session_state.data_cleaning_stats = {
+        'original_rows': original_rows,
+        'final_rows': final_rows,
+        'retention_rate': retention_rate,
+        'removed_rows': original_rows - final_rows,
+        'min_price': data['SALE PRICE'].min() if 'SALE PRICE' in data.columns else 0,
+        'max_price': data['SALE PRICE'].max() if 'SALE PRICE' in data.columns else 0
+    }
     
     return data
-
 # Загружаем данные
 df = load_data()
 
