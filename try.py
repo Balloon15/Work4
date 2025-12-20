@@ -23,7 +23,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Словарь переводов названий колонок на русский
+# Словарь переводов названий колонок на русский (ТОЛЬКО для таблицы переводов)
 COLUMN_TRANSLATIONS = {
     # Основные идентификаторы
     'Unnamed: 0': 'ID',
@@ -56,7 +56,7 @@ COLUMN_TRANSLATIONS = {
     'SALE DATE': 'Дата продажи',
 }
 
-# Функция для перевода названий колонок
+# Функция для перевода названий колонок (используется только в Таблице переводов)
 def translate_columns(df):
     translated_cols = []
     for col in df.columns:
@@ -64,7 +64,7 @@ def translate_columns(df):
     df.columns = translated_cols
     return df
 
-# Функция для обратного перевода
+# Функция для обратного перевода (используется только в Таблице переводов)
 def reverse_translate_column(russian_name):
     for eng, rus in COLUMN_TRANSLATIONS.items():
         if rus == russian_name:
@@ -125,27 +125,24 @@ df = load_data()
 # Создаем навигацию
 st.sidebar.title("NYC Property Sales Dashboard")
 page = st.sidebar.radio(
-    "Навигация",
-    ["Визуализация данных", "Анализ рынка", "Прогнозные модели", "Таблица переводов"]
+    "Navigation",
+    ["Data Visualization", "Market Analysis", "Predictive Models", "Translation Table"]
 )
 # Добавляем фильтры в сайдбар
 st.sidebar.markdown("---")
-st.sidebar.subheader("Фильтры данных")
+st.sidebar.subheader("Data Filters")
 
-# Создаем копию с русскими названиями для фильтров
-df_russian = translate_columns(df.copy())
-
-# Фильтр по району
-neighborhoods = ['Все'] + sorted(df['NEIGHBORHOOD'].dropna().unique().tolist())
+# Фильтр по району - используем оригинальные английские названия
+neighborhoods = ['All'] + sorted(df['NEIGHBORHOOD'].dropna().unique().tolist())
 selected_neighborhood = st.sidebar.selectbox(
-    COLUMN_TRANSLATIONS.get('NEIGHBORHOOD', 'Район'), 
+    'Neighborhood', 
     neighborhoods
 )
 
-# Фильтр по типу здания
-building_classes = ['Все'] + sorted(df['BUILDING CLASS CATEGORY'].dropna().unique().tolist())
+# Фильтр по типу здания - используем оригинальные английские названия
+building_classes = ['All'] + sorted(df['BUILDING CLASS CATEGORY'].dropna().unique().tolist())
 selected_building_class = st.sidebar.selectbox(
-    COLUMN_TRANSLATIONS.get('BUILDING CLASS CATEGORY', 'Категория класса здания'), 
+    'Building Class Category', 
     building_classes
 )
 
@@ -158,7 +155,7 @@ if 'YEAR BUILT' in df.columns:
         max_year = int(min(valid_years.max(), datetime.now().year))  # Не позже текущего года
         
         year_range = st.sidebar.slider(
-            "Год постройки",
+            "Year Built",
             min_value=min_year,
             max_value=max_year,
             value=(min_year, max_year)
@@ -172,7 +169,7 @@ if 'SALE PRICE' in df.columns:
     realistic_max_price = 50_000_000
     
     price_range = st.sidebar.slider(
-        "Цена продажи ($)",
+        "Sale Price ($)",
         min_value=int(realistic_min_price),
         max_value=int(realistic_max_price),
         value=(int(realistic_min_price), int(realistic_max_price)),
@@ -182,10 +179,10 @@ if 'SALE PRICE' in df.columns:
 # Применяем фильтры
 filtered_df = df.copy()
 
-if selected_neighborhood != 'Все':
+if selected_neighborhood != 'All':
     filtered_df = filtered_df[filtered_df['NEIGHBORHOOD'] == selected_neighborhood]
 
-if selected_building_class != 'Все':
+if selected_building_class != 'All':
     filtered_df = filtered_df[filtered_df['BUILDING CLASS CATEGORY'] == selected_building_class]
 
 if 'YEAR BUILT' in df.columns:
@@ -211,16 +208,13 @@ if all(col in filtered_df.columns for col in ['SALE PRICE', 'GROSS SQUARE FEET']
 if 'YEAR BUILT' in filtered_df.columns:
     filtered_df['BUILDING_AGE'] = datetime.now().year - filtered_df['YEAR BUILT']
 
-# Создаем DataFrame с русскими названиями для отображения
-filtered_df_russian = translate_columns(filtered_df.copy())
-
 # Страница 4: Таблица переводов
-if page == "Таблица переводов":
-    st.title("Таблица переводов названий колонок")
+if page == "Translation Table":
+    st.title("Column Names Translation Table")
     
     translation_table = pd.DataFrame({
-        'Оригинальное название (англ.)': list(COLUMN_TRANSLATIONS.keys()),
-        'Перевод (рус.)': list(COLUMN_TRANSLATIONS.values())
+        'Original Name (English)': list(COLUMN_TRANSLATIONS.keys()),
+        'Translation (Russian)': list(COLUMN_TRANSLATIONS.values())
     })
     
     st.dataframe(
@@ -232,74 +226,67 @@ if page == "Таблица переводов":
     st.markdown("---")
 
 # Страница 1: Визуализация данных
-elif page == "Визуализация данных":
-    st.title("Визуализация данных о продажах недвижимости Нью-Йорка")
+elif page == "Data Visualization":
+    st.title("NYC Property Sales Data Visualization")
     
     # KPI карточки
     col1, col2, col3, col4 = st.columns(4)
     
     with col1:
-        st.metric("Всего записей", len(filtered_df))
+        st.metric("Total Records", len(filtered_df))
     
     with col2:
         if 'SALE PRICE' in filtered_df.columns:
             median_price = filtered_df['SALE PRICE'].median()
-            st.metric("Медианная цена ($)", f"{median_price:,.0f}")
+            st.metric("Median Price ($)", f"{median_price:,.0f}")
     
     with col3:
         if 'SALE DATE' in filtered_df.columns:
             unique_months = filtered_df['SALE_MONTH'].nunique()
-            st.metric("Месяцев данных", unique_months)
+            st.metric("Months of Data", unique_months)
     
     with col4:
         unique_neighborhoods = filtered_df['NEIGHBORHOOD'].nunique()
-        st.metric("Количество районов", unique_neighborhoods)
-
+        st.metric("Number of Neighborhoods", unique_neighborhoods)
 
     st.markdown("---")
     
     # Таблица с данными
-    st.subheader("Просмотр данных")
+    st.subheader("Data Preview")
     
-    # Выбор колонок для отображения (используем русские названия)
-    all_columns_russian = filtered_df_russian.columns.tolist()
-    selected_columns_russian = st.multiselect(
-        "Выберите колонки для отображения:",
-        all_columns_russian,
-        default=all_columns_russian[:10] if len(all_columns_russian) > 10 else all_columns_russian
+    # Выбор колонок для отображения - используем оригинальные английские названия
+    all_columns = filtered_df.columns.tolist()
+    selected_columns = st.multiselect(
+        "Select columns to display:",
+        all_columns,
+        default=all_columns[:10] if len(all_columns) > 10 else all_columns
     )
     
-    # Преобразуем выбранные русские названия обратно в английские для фильтрации
-    selected_columns_english = []
-    for rus_col in selected_columns_russian:
-        eng_col = reverse_translate_column(rus_col)
-        selected_columns_english.append(eng_col if eng_col in filtered_df.columns else rus_col)
-    
     # Пагинация
-    page_size = st.selectbox("Строк на странице:", [10, 25, 50, 100])
-    page_number = st.number_input("Номер страницы:", min_value=1, value=1)
+    page_size = st.selectbox("Rows per page:", [10, 25, 50, 100])
+    page_number = st.number_input("Page number:", min_value=1, value=1)
     
     start_idx = (page_number - 1) * page_size
     end_idx = start_idx + page_size
     
-    if selected_columns_russian:
-        # Отображаем таблицу с русскими названиями колонок
-        display_df = filtered_df_russian[selected_columns_russian].iloc[start_idx:end_idx]
+    if selected_columns:
+        # Отображаем таблицу с английскими названиями колонок
+        display_df = filtered_df[selected_columns].iloc[start_idx:end_idx]
         st.dataframe(
             display_df,
             use_container_width=True,
             height=400
         )
     
-    # Экспорт данных (используем оригинальные английские названия)
-    if selected_columns_english:
-        export_df = filtered_df[selected_columns_english]
+    # Экспорт данных
+    if selected_columns:
+        export_df = filtered_df[selected_columns]
     else:
         export_df = filtered_df
     
     csv = export_df.to_csv(index=False).encode('utf-8')
     st.download_button(
-        label="📥 Скачать отфильтрованные данные (CSV)",
+        label="📥 Download Filtered Data (CSV)",
         data=csv,
         file_name="filtered_nyc_property_sales.csv",
         mime="text/csv",
@@ -308,18 +295,14 @@ elif page == "Визуализация данных":
     st.markdown("---")
     
     # Базовые статистики
-    st.subheader("Базовая статистика")
+    st.subheader("Basic Statistics")
     
-    if st.checkbox("Показать статистики по числовым колонкам"):
-        numeric_cols_english = filtered_df.select_dtypes(include=[np.number]).columns.tolist()
-        if numeric_cols_english:
-            # Преобразуем английские названия в русские для отображения
-            numeric_cols_russian = [COLUMN_TRANSLATIONS.get(col, col) for col in numeric_cols_english]
-            
-            stats_df = filtered_df[numeric_cols_english].describe().T
+    if st.checkbox("Show statistics for numeric columns"):
+        numeric_cols = filtered_df.select_dtypes(include=[np.number]).columns.tolist()
+        if numeric_cols:
+            stats_df = filtered_df[numeric_cols].describe().T
             stats_df = stats_df[['count', 'mean', 'std', 'min', '25%', '50%', '75%', 'max']]
-            stats_df.columns = ['Кол-во', 'Среднее', 'Стд. откл.', 'Мин.', '25%', 'Медиана', '75%', 'Макс.']
-            stats_df.index = numeric_cols_russian
+            stats_df.columns = ['Count', 'Mean', 'Std', 'Min', '25%', 'Median', '75%', 'Max']
             
             st.dataframe(stats_df.style.format("{:,.2f}"), use_container_width=True)
     
@@ -331,24 +314,24 @@ elif page == "Визуализация данных":
     with col1:
         if 'SALE PRICE' in filtered_df.columns:
             fig = px.histogram(
-                filtered_df_russian, 
-                x='Цена продажи',
+                filtered_df, 
+                x='SALE PRICE',
                 nbins=50,
-                title="Распределение цен на недвижимость",
-                labels={'Цена продажи': 'Цена продажи ($)'}
+                title="Property Price Distribution",
+                labels={'SALE PRICE': 'Sale Price ($)'}
             )
             fig.update_layout(xaxis_tickformat=',')
             st.plotly_chart(fig, use_container_width=True)
             
         if 'YEAR BUILT' in filtered_df.columns:
-            valid_year_data = filtered_df_russian[filtered_df_russian['Год постройки'] > 0]
+            valid_year_data = filtered_df[filtered_df['YEAR BUILT'] > 0]
             if not valid_year_data.empty:
                 fig = px.histogram(
                     valid_year_data,
-                    x='Год постройки',
+                    x='YEAR BUILT',
                     nbins=30,
-                    title="Распределение по году постройки",
-                    labels={'Год постройки': 'Год'}
+                    title="Year Built Distribution",
+                    labels={'YEAR BUILT': 'Year'}
                 )
                 st.plotly_chart(fig, use_container_width=True)
     
@@ -367,20 +350,20 @@ elif page == "Визуализация данных":
             fig = px.pie(
                 values=borough_counts.values,
                 names=borough_counts.index,
-                title="Распределение продаж по округам",
+                title="Sales Distribution by Borough",
                 hole=0.3
             )
             st.plotly_chart(fig, use_container_width=True)
             
         if 'SALE PRICE' in filtered_df.columns and 'GROSS SQUARE FEET' in filtered_df.columns:
             fig = px.scatter(
-                filtered_df_russian,
-                x='Общая площадь (кв. фут)',
-                y='Цена продажи',
-                title="Цена vs Общая площадь",
+                filtered_df,
+                x='GROSS SQUARE FEET',
+                y='SALE PRICE',
+                title="Price vs Gross Square Feet",
                 labels={
-                    'Общая площадь (кв. фут)': 'Площадь (кв. фут)',
-                    'Цена продажи': 'Цена ($)'
+                    'GROSS SQUARE FEET': 'Area (sq ft)',
+                    'SALE PRICE': 'Price ($)'
                 },
                 opacity=0.6
             )
@@ -389,7 +372,7 @@ elif page == "Визуализация данных":
     
     # Сезонность внутри года
     st.markdown("---")
-    st.subheader("Сезонные паттерны внутри года")
+    st.subheader("Seasonal Patterns Within Year")
     
     if 'SALE_MONTH' in filtered_df.columns and 'SALE PRICE' in filtered_df.columns:
         monthly_stats = filtered_df.groupby('SALE_MONTH').agg({
@@ -397,57 +380,57 @@ elif page == "Визуализация данных":
             'GROSS SQUARE FEET': 'median'
         }).reset_index()
         
-        monthly_stats.columns = ['Месяц', 'Медианная цена', 'Количество продаж', 'Медианная площадь']
+        monthly_stats.columns = ['Month', 'Median Price', 'Sales Count', 'Median Area']
         
         col1, col2 = st.columns(2)
         
         with col1:
             fig = px.bar(
                 monthly_stats,
-                x='Месяц',
-                y='Количество продаж',
-                title='Количество продаж по месяцам',
-                color='Количество продаж'
+                x='Month',
+                y='Sales Count',
+                title='Sales Count by Month',
+                color='Sales Count'
             )
             st.plotly_chart(fig, use_container_width=True)
         
         with col2:
             fig = px.line(
                 monthly_stats,
-                x='Месяц',
-                y='Медианная цена',
-                title='Медианная цена по месяцам',
+                x='Month',
+                y='Median Price',
+                title='Median Price by Month',
                 markers=True
             )
             fig.update_layout(yaxis_tickformat=',')
             st.plotly_chart(fig, use_container_width=True)
 
 # Страница 2: Анализ рынка
-elif page == "Анализ рынка":
-    st.title("Анализ рынка недвижимости Нью-Йорка")
+elif page == "Market Analysis":
+    st.title("NYC Real Estate Market Analysis")
     
     analysis_type = st.selectbox(
-        "Выберите тип анализа:",
-        ["Анализ по районам", "Анализ по типам зданий", "Стоимость квадратного фута", "Возраст vs Цена"]
+        "Select analysis type:",
+        ["Neighborhood Analysis", "Building Type Analysis", "Price per Sq Ft Analysis", "Age vs Price Analysis"]
     )
     
-    if analysis_type == "Анализ по районам":
-        st.subheader("Сравнение районов")
+    if analysis_type == "Neighborhood Analysis":
+        st.subheader("Neighborhood Comparison")
         
         if 'NEIGHBORHOOD' in filtered_df.columns and 'SALE PRICE' in filtered_df.columns:
-            # Топ-15 районов по медианной цене
+            # Top 15 neighborhoods by median price
             neighborhood_stats = filtered_df.groupby('NEIGHBORHOOD').agg({
                 'SALE PRICE': ['median', 'count'],
                 'GROSS SQUARE FEET': 'median'
             }).round(2)
             
-            neighborhood_stats.columns = ['Медианная цена', 'Количество продаж', 'Медианная площадь']
+            neighborhood_stats.columns = ['Median Price', 'Sales Count', 'Median Area']
             
-            # Добавляем цену за кв.фут
-            neighborhood_stats['Цена за кв.фут'] = neighborhood_stats['Медианная цена'] / neighborhood_stats['Медианная площадь']
+            # Add price per sq ft
+            neighborhood_stats['Price per Sq Ft'] = neighborhood_stats['Median Price'] / neighborhood_stats['Median Area']
             
-            # Сортируем по медианной цене
-            top_neighborhoods = neighborhood_stats.sort_values('Медианная цена', ascending=False).head(15)
+            # Sort by median price
+            top_neighborhoods = neighborhood_stats.sort_values('Median Price', ascending=False).head(15)
             
             col1, col2 = st.columns(2)
             
@@ -455,9 +438,9 @@ elif page == "Анализ рынка":
                 fig = px.bar(
                     top_neighborhoods.reset_index(),
                     x='NEIGHBORHOOD',
-                    y='Медианная цена',
-                    title='Топ-15 районов по медианной цене',
-                    color='Медианная цена'
+                    y='Median Price',
+                    title='Top 15 Neighborhoods by Median Price',
+                    color='Median Price'
                 )
                 fig.update_xaxes(tickangle=45)
                 st.plotly_chart(fig, use_container_width=True)
@@ -465,19 +448,19 @@ elif page == "Анализ рынка":
             with col2:
                 fig = px.scatter(
                     neighborhood_stats.reset_index(),
-                    x='Количество продаж',
-                    y='Медианная цена',
-                    size='Количество продаж',
-                    color='Цена за кв.фут',
+                    x='Sales Count',
+                    y='Median Price',
+                    size='Sales Count',
+                    color='Price per Sq Ft',
                     hover_name='NEIGHBORHOOD',
-                    title='Соотношение цены и количества продаж',
+                    title='Price vs Sales Count Correlation',
                     size_max=40
                 )
                 fig.update_layout(xaxis_tickformat=',', yaxis_tickformat=',')
                 st.plotly_chart(fig, use_container_width=True)
     
-    elif analysis_type == "Анализ по типам зданий":
-        st.subheader("Анализ по типам недвижимости")
+    elif analysis_type == "Building Type Analysis":
+        st.subheader("Building Type Analysis")
         
         if 'BUILDING CLASS CATEGORY' in filtered_df.columns:
             building_stats = filtered_df.groupby('BUILDING CLASS CATEGORY').agg({
@@ -486,27 +469,27 @@ elif page == "Анализ рынка":
                 'TOTAL UNITS': 'median'
             }).round(2)
             
-            building_stats.columns = ['Медианная цена', 'Количество', 'Стд. отклонение', 
-                                      'Медианная площадь', 'Медианное кол-во единиц']
+            building_stats.columns = ['Median Price', 'Count', 'Std Deviation', 
+                                      'Median Area', 'Median Units']
             
-            # Топ-10 типов по цене
-            top_buildings = building_stats.nlargest(10, 'Медианная цена')
+            # Top 10 types by price
+            top_buildings = building_stats.nlargest(10, 'Median Price')
             
             fig = px.bar(
                 top_buildings.reset_index(),
                 x='BUILDING CLASS CATEGORY',
-                y='Медианная цена',
-                title='Топ-10 самых дорогих типов недвижимости',
-                color='Медианная цена'
+                y='Median Price',
+                title='Top 10 Most Expensive Building Types',
+                color='Median Price'
             )
             fig.update_xaxes(tickangle=45, tickfont=dict(size=10))
             st.plotly_chart(fig, use_container_width=True)
     
-    elif analysis_type == "Стоимость квадратного фута":
-        st.subheader("Анализ стоимости квадратного фута")
+    elif analysis_type == "Price per Sq Ft Analysis":
+        st.subheader("Price per Square Foot Analysis")
         
         if 'PRICE_PER_SQFT' in filtered_df.columns:
-            # Удаляем выбросы в цене за кв.фут
+            # Remove outliers in price per sq ft
             q1 = filtered_df['PRICE_PER_SQFT'].quantile(0.01)
             q3 = filtered_df['PRICE_PER_SQFT'].quantile(0.99)
             price_per_sqft_filtered = filtered_df[(filtered_df['PRICE_PER_SQFT'] >= q1) & 
@@ -519,15 +502,13 @@ elif page == "Анализ рынка":
                     price_per_sqft_filtered,
                     x='PRICE_PER_SQFT',
                     nbins=50,
-                    title="Распределение цены за кв.фут",
-                    labels={'PRICE_PER_SQFT': 'Цена за кв.фут ($)'}
+                    title="Price per Sq Ft Distribution",
+                    labels={'PRICE_PER_SQFT': 'Price per Sq Ft ($)'}
                 )
                 st.plotly_chart(fig, use_container_width=True)
             
             with col2:
-                # ИСПРАВЛЕНИЕ: Создаем BOROUGH_NAME если его нет
                 if 'BOROUGH' in filtered_df.columns:
-                    # Создаем отображение для borough
                     borough_map = {
                         1: 'Manhattan',
                         2: 'Brooklyn', 
@@ -536,28 +517,26 @@ elif page == "Анализ рынка":
                         5: 'Staten Island'
                     }
                     
-                    # Создаем временную колонку для группировки
                     temp_df = price_per_sqft_filtered.copy()
                     temp_df['BOROUGH_NAME_TEMP'] = temp_df['BOROUGH'].map(borough_map)
                     
-                    # Группируем по временной колонке
                     borough_price_sqft = temp_df.groupby('BOROUGH_NAME_TEMP')['PRICE_PER_SQFT'].median().sort_values(ascending=False)
                     
                     fig = px.bar(
                         x=borough_price_sqft.index,
                         y=borough_price_sqft.values,
-                        title='Средняя цена за кв.фут по округам',
-                        labels={'x': 'Округ', 'y': 'Цена за кв.фут ($)'}
+                        title='Average Price per Sq Ft by Borough',
+                        labels={'x': 'Borough', 'y': 'Price per Sq Ft ($)'}
                     )
                     st.plotly_chart(fig, use_container_width=True)
     
-    elif analysis_type == "Возраст vs Цена":
-        st.subheader("Влияние возраста здания на цену")
+    elif analysis_type == "Age vs Price Analysis":
+        st.subheader("Building Age vs Price Analysis")
         
         if 'BUILDING_AGE' in filtered_df.columns and 'SALE PRICE' in filtered_df.columns:
-            # Группируем по возрастным категориям
+            # Group by age categories
             age_bins = [0, 10, 25, 50, 100, 200, 500]
-            age_labels = ['0-10 лет', '11-25 лет', '26-50 лет', '51-100 лет', '101-200 лет', '200+ лет']
+            age_labels = ['0-10 years', '11-25 years', '26-50 years', '51-100 years', '101-200 years', '200+ years']
             
             filtered_df['AGE_CATEGORY'] = pd.cut(
                 filtered_df['BUILDING_AGE'],
@@ -579,7 +558,7 @@ elif page == "Анализ рынка":
                     age_stats,
                     x='AGE_CATEGORY',
                     y='SALE PRICE',
-                    title='Медианная цена по возрастным категориям',
+                    title='Median Price by Age Category',
                     color='SALE PRICE'
                 )
                 fig.update_layout(yaxis_tickformat=',')
@@ -591,31 +570,31 @@ elif page == "Анализ рынка":
                     x='BUILDING_AGE',
                     y='SALE PRICE',
                     trendline="lowess",
-                    title='Зависимость цены от возраста здания',
-                    labels={'BUILDING_AGE': 'Возраст здания (лет)', 'SALE PRICE': 'Цена ($)'},
+                    title='Price vs Building Age',
+                    labels={'BUILDING_AGE': 'Building Age (years)', 'SALE PRICE': 'Price ($)'},
                     opacity=0.3
                 )
                 fig.update_layout(yaxis_tickformat=',')
                 st.plotly_chart(fig, use_container_width=True)
 
 # Страница 3: Прогнозные модели
-elif page == "Прогнозные модели":
-    st.title("Прогнозные модели на основе данных за 12 месяцев")    
+elif page == "Predictive Models":
+    st.title("Predictive Models Based on 12 Months Data")    
     
     model_type = st.selectbox(
-        "Выберите модель:",
-        ["Прогноз цены на основе характеристик", "Анализ сезонности", "Классификация по ценовым категориям"]
+        "Select model type:",
+        ["Price Prediction Based on Features", "Seasonality Analysis", "Price Category Classification"]
     )
     
     # Модель 1: Прогноз цены на основе характеристик
-    if model_type == "Прогноз цены на основе характеристик":
-        st.subheader("Прогноз цены на основе характеристик объекта")
+    if model_type == "Price Prediction Based on Features":
+        st.subheader("Property Price Prediction Based on Features")
         
         if len(filtered_df) < 100:
-            st.error("Слишком мало данных для построения модели. Отфильтруйте меньше данных.")
+            st.error("Too little data to build a model. Filter less data.")
         else:
             # Подготовка данных для модели
-            st.write("**Подготовка данных...**")
+            st.write("**Preparing data...**")
             
             # Выбираем релевантные признаки
             features = ['GROSS SQUARE FEET', 'BOROUGH', 'YEAR BUILT', 
@@ -630,7 +609,7 @@ elif page == "Прогнозные модели":
                     model_df = model_df.dropna(subset=[feature])
             
             if len(model_df) < 50:
-                st.error("Недостаточно данных после очистки пропусков.")
+                st.error("Not enough data after cleaning missing values.")
             else:
                 # Преобразуем категориальные переменные
                 X = model_df[features].copy()
@@ -647,7 +626,7 @@ elif page == "Прогнозные модели":
                 )
                 
                 # Обучаем модель
-                st.write("**Обучение модели Random Forest...**")
+                st.write("**Training Random Forest model...**")
                 model = RandomForestRegressor(
                     n_estimators=100,
                     max_depth=10,
@@ -667,11 +646,11 @@ elif page == "Прогнозные модели":
                 
                 col1, col2, col3 = st.columns(3)
                 with col1:
-                    st.metric("MAE (Средняя абсолютная ошибка)", f"${mae:,.0f}")
+                    st.metric("MAE (Mean Absolute Error)", f"${mae:,.0f}")
                 with col2:
-                    st.metric("RMSE (Среднеквадратичная ошибка)", f"${rmse:,.0f}")
+                    st.metric("RMSE (Root Mean Square Error)", f"${rmse:,.0f}")
                 with col3:
-                    st.metric("R² (Коэффициент детерминации)", f"{r2:.3f}")
+                    st.metric("R² (Coefficient of Determination)", f"{r2:.3f}")
                 
                 # Визуализация предсказаний
                 fig = go.Figure()
@@ -680,7 +659,7 @@ elif page == "Прогнозные модели":
                     x=y_test.values[:100],
                     y=y_pred[:100],
                     mode='markers',
-                    name='Предсказания',
+                    name='Predictions',
                     marker=dict(size=8, opacity=0.6)
                 ))
                 
@@ -691,14 +670,14 @@ elif page == "Прогнозные модели":
                     x=[min_val, max_val],
                     y=[min_val, max_val],
                     mode='lines',
-                    name='Идеальное предсказание',
+                    name='Perfect Prediction',
                     line=dict(color='red', dash='dash')
                 ))
                 
                 fig.update_layout(
-                    title='Сравнение реальных и предсказанных цен (первые 100 образцов)',
-                    xaxis_title='Реальная цена ($)',
-                    yaxis_title='Предсказанная цена ($)',
+                    title='Actual vs Predicted Prices (first 100 samples)',
+                    xaxis_title='Actual Price ($)',
+                    yaxis_title='Predicted Price ($)',
                     xaxis_tickformat=',',
                     yaxis_tickformat=','
                 )
@@ -706,33 +685,33 @@ elif page == "Прогнозные модели":
                 st.plotly_chart(fig, use_container_width=True)
                 
                 # Важность признаков
-                st.subheader("Важность признаков для предсказания цены")
+                st.subheader("Feature Importance for Price Prediction")
                 
                 if hasattr(model, 'feature_importances_'):
                     feature_importance = pd.DataFrame({
-                        'Признак': X.columns,
-                        'Важность': model.feature_importances_
-                    }).sort_values('Важность', ascending=False).head(15)
+                        'Feature': X.columns,
+                        'Importance': model.feature_importances_
+                    }).sort_values('Importance', ascending=False).head(15)
                     
                     fig = px.bar(
                         feature_importance,
-                        x='Важность',
-                        y='Признак',
+                        x='Importance',
+                        y='Feature',
                         orientation='h',
-                        title='Топ-15 важнейших признаков для предсказания цены',
-                        color='Важность'
+                        title='Top 15 Most Important Features for Price Prediction',
+                        color='Importance'
                     )
                     st.plotly_chart(fig, use_container_width=True)
                 
                 # Интерактивный прогноз
                 st.markdown("---")
-                st.subheader("Интерактивный прогноз цены")
+                st.subheader("Interactive Price Prediction")
                 
                 col1, col2, col3 = st.columns(3)
                 
                 with col1:
                     sqft = st.number_input(
-                        "Общая площадь (кв. фут)",
+                        "Gross Square Feet",
                         min_value=100,
                         max_value=100000,
                         value=1000,
@@ -740,20 +719,20 @@ elif page == "Прогнозные модели":
                     )
                     
                     borough = st.selectbox(
-                        "Округ",
+                        "Borough",
                         options=sorted(model_df['BOROUGH'].unique()),
                         format_func=lambda x: {
-                            1: 'Манхэттен',
-                            2: 'Бруклин',
-                            3: 'Квинс',
-                            4: 'Бронкс',
-                            5: 'Стэтен-Айленд'
+                            1: 'Manhattan',
+                            2: 'Brooklyn',
+                            3: 'Queens',
+                            4: 'Bronx',
+                            5: 'Staten Island'
                         }.get(x, x)
                     )
                 
                 with col2:
                     year_built = st.number_input(
-                        "Год постройки",
+                        "Year Built",
                         min_value=1700,
                         max_value=datetime.now().year,
                         value=1980,
@@ -761,7 +740,7 @@ elif page == "Прогнозные модели":
                     )
                     
                     total_units = st.number_input(
-                        "Количество единиц",
+                        "Total Units",
                         min_value=1,
                         max_value=1000,
                         value=1,
@@ -770,7 +749,7 @@ elif page == "Прогнозные модели":
                 
                 with col3:
                     land_sqft = st.number_input(
-                        "Площадь земли (кв. фут)",
+                        "Land Square Feet",
                         min_value=100,
                         max_value=1000000,
                         value=sqft,
@@ -781,12 +760,12 @@ elif page == "Прогнозные модели":
                     if 'BUILDING CLASS CATEGORY' in model_df.columns:
                         building_types = sorted(model_df['BUILDING CLASS CATEGORY'].unique())
                         building_type = st.selectbox(
-                            "Тип здания",
+                            "Building Type",
                             options=building_types
                         )
                 
                 # Кнопка для прогноза
-                if st.button("Сделать прогноз"):
+                if st.button("Make Prediction"):
                     # Создаем DataFrame с введенными данными
                     input_data = pd.DataFrame({
                         'GROSS SQUARE FEET': [sqft],
@@ -812,21 +791,21 @@ elif page == "Прогнозные модели":
                     price_per_sqft = predicted_price / sqft if sqft > 0 else 0
                     
                     st.success(f"""
-                    **Прогнозируемая цена: ${predicted_price:,.0f}**
+                    **Predicted Price: ${predicted_price:,.0f}**
                     
-                    Детали:
-                    - Цена за кв.фут: ${price_per_sqft:.2f}
-                    - Общая площадь: {sqft:,.0f} кв.фут
-                    - Возраст здания: {datetime.now().year - year_built} лет
-                    - Тип: {building_type}
+                    Details:
+                    - Price per sq ft: ${price_per_sqft:.2f}
+                    - Gross area: {sqft:,.0f} sq ft
+                    - Building age: {datetime.now().year - year_built} years
+                    - Type: {building_type}
                     """)
     
     # Модель 2: Анализ сезонности
-    elif model_type == "Анализ сезонности":
-        st.subheader("Анализ сезонных паттернов")
+    elif model_type == "Seasonality Analysis":
+        st.subheader("Seasonal Pattern Analysis")
         
         if 'SALE_MONTH' not in filtered_df.columns:
-            st.error("В данных отсутствует информация о дате продажи.")
+            st.error("Data does not contain sale date information.")
         else:
             # Анализ сезонности по месяцам
             monthly_analysis = filtered_df.groupby('SALE_MONTH').agg({
@@ -835,26 +814,26 @@ elif page == "Прогнозные модели":
                 'GROSS SQUARE FEET': 'median'
             }).reset_index()
             
-            monthly_analysis.columns = ['Месяц', 'Медианная цена', 'Количество продаж', 
-                                       'Стд. отклонение', 'Медианная цена за кв.фут', 
-                                       'Медианная площадь']
+            monthly_analysis.columns = ['Month', 'Median Price', 'Sales Count', 
+                                       'Std Deviation', 'Median Price per Sq Ft', 
+                                       'Median Area']
             
             # Нормализуем данные для сравнения
-            monthly_analysis['Норм. цена'] = monthly_analysis['Медианная цена'] / monthly_analysis['Медианная цена'].mean()
-            monthly_analysis['Норм. количество'] = monthly_analysis['Количество продаж'] / monthly_analysis['Количество продаж'].mean()
+            monthly_analysis['Normalized Price'] = monthly_analysis['Median Price'] / monthly_analysis['Median Price'].mean()
+            monthly_analysis['Normalized Count'] = monthly_analysis['Sales Count'] / monthly_analysis['Sales Count'].mean()
             
             # Визуализация сезонности
             fig = make_subplots(
                 rows=2, cols=1,
-                subplot_titles=('Сезонность цен', 'Сезонность количества продаж'),
+                subplot_titles=('Price Seasonality', 'Sales Volume Seasonality'),
                 vertical_spacing=0.15
             )
             
             fig.add_trace(
                 go.Bar(
-                    x=monthly_analysis['Месяц'],
-                    y=monthly_analysis['Медианная цена'],
-                    name='Медианная цена',
+                    x=monthly_analysis['Month'],
+                    y=monthly_analysis['Median Price'],
+                    name='Median Price',
                     marker_color='royalblue'
                 ),
                 row=1, col=1
@@ -862,9 +841,9 @@ elif page == "Прогнозные модели":
             
             fig.add_trace(
                 go.Scatter(
-                    x=monthly_analysis['Месяц'],
-                    y=monthly_analysis['Норм. цена'],
-                    name='Норм. цена',
+                    x=monthly_analysis['Month'],
+                    y=monthly_analysis['Normalized Price'],
+                    name='Normalized Price',
                     line=dict(color='red', width=3),
                     yaxis='y2'
                 ),
@@ -873,9 +852,9 @@ elif page == "Прогнозные модели":
             
             fig.add_trace(
                 go.Bar(
-                    x=monthly_analysis['Месяц'],
-                    y=monthly_analysis['Количество продаж'],
-                    name='Количество продаж',
+                    x=monthly_analysis['Month'],
+                    y=monthly_analysis['Sales Count'],
+                    name='Sales Count',
                     marker_color='lightgreen'
                 ),
                 row=2, col=1
@@ -883,9 +862,9 @@ elif page == "Прогнозные модели":
             
             fig.add_trace(
                 go.Scatter(
-                    x=monthly_analysis['Месяц'],
-                    y=monthly_analysis['Норм. количество'],
-                    name='Норм. количество',
+                    x=monthly_analysis['Month'],
+                    y=monthly_analysis['Normalized Count'],
+                    name='Normalized Count',
                     line=dict(color='orange', width=3),
                     yaxis='y2'
                 ),
@@ -895,107 +874,107 @@ elif page == "Прогнозные модели":
             fig.update_layout(
                 height=700,
                 showlegend=True,
-                title_text="Анализ сезонности продаж недвижимости"
+                title_text="Real Estate Sales Seasonality Analysis"
             )
             
-            fig.update_xaxes(title_text="Месяц", row=1, col=1)
-            fig.update_xaxes(title_text="Месяц", row=2, col=1)
-            fig.update_yaxes(title_text="Цена ($)", tickformat=',', row=1, col=1)
-            fig.update_yaxes(title_text="Нормализованное значение", row=1, col=1, secondary_y=True)
-            fig.update_yaxes(title_text="Количество продаж", row=2, col=1)
-            fig.update_yaxes(title_text="Нормализованное значение", row=2, col=1, secondary_y=True)
+            fig.update_xaxes(title_text="Month", row=1, col=1)
+            fig.update_xaxes(title_text="Month", row=2, col=1)
+            fig.update_yaxes(title_text="Price ($)", tickformat=',', row=1, col=1)
+            fig.update_yaxes(title_text="Normalized Value", row=1, col=1, secondary_y=True)
+            fig.update_yaxes(title_text="Sales Count", row=2, col=1)
+            fig.update_yaxes(title_text="Normalized Value", row=2, col=1, secondary_y=True)
             
             st.plotly_chart(fig, use_container_width=True)
             
             # Статистический анализ сезонности
-            st.subheader("📊 Статистика сезонности")
+            st.subheader("📊 Seasonality Statistics")
             
             col1, col2 = st.columns(2)
             
             with col1:
                 # Самый дорогой месяц
-                most_expensive_month = monthly_analysis.loc[monthly_analysis['Медианная цена'].idxmax()]
+                most_expensive_month = monthly_analysis.loc[monthly_analysis['Median Price'].idxmax()]
                 st.metric(
-                    "Самый дорогой месяц",
-                    f"Месяц {int(most_expensive_month['Месяц'])}",
-                    f"${most_expensive_month['Медианная цена']:,.0f}"
+                    "Most Expensive Month",
+                    f"Month {int(most_expensive_month['Month'])}",
+                    f"${most_expensive_month['Median Price']:,.0f}"
                 )
                 
                 # Месяц с наибольшим количеством продаж
-                busiest_month = monthly_analysis.loc[monthly_analysis['Количество продаж'].idxmax()]
+                busiest_month = monthly_analysis.loc[monthly_analysis['Sales Count'].idxmax()]
                 st.metric(
-                    "Месяц с наибольшим числом продаж",
-                    f"Месяц {int(busiest_month['Месяц'])}",
-                    f"{int(busiest_month['Количество продаж'])} продаж"
+                    "Busiest Month",
+                    f"Month {int(busiest_month['Month'])}",
+                    f"{int(busiest_month['Sales Count'])} sales"
                 )
             
             with col2:
                 # Самый дешевый месяц
-                cheapest_month = monthly_analysis.loc[monthly_analysis['Медианная цена'].idxmin()]
+                cheapest_month = monthly_analysis.loc[monthly_analysis['Median Price'].idxmin()]
                 st.metric(
-                    "Самый дешевый месяц",
-                    f"Месяц {int(cheapest_month['Месяц'])}",
-                    f"${cheapest_month['Медианная цена']:,.0f}"
+                    "Cheapest Month",
+                    f"Month {int(cheapest_month['Month'])}",
+                    f"${cheapest_month['Median Price']:,.0f}"
                 )
                 
                 # Амплитуда цен
-                price_amplitude = ((most_expensive_month['Медианная цена'] - cheapest_month['Медианная цена']) / 
-                                  cheapest_month['Медианная цена'] * 100)
+                price_amplitude = ((most_expensive_month['Median Price'] - cheapest_month['Median Price']) / 
+                                  cheapest_month['Median Price'] * 100)
                 st.metric(
-                    "Сезонная амплитуда цен",
+                    "Seasonal Price Amplitude",
                     f"{price_amplitude:.1f}%",
-                    f"от ${cheapest_month['Медианная цена']:,.0f} до ${most_expensive_month['Медианная цена']:,.0f}"
+                    f"from ${cheapest_month['Median Price']:,.0f} to ${most_expensive_month['Median Price']:,.0f}"
                 )
             
             # Рекомендации по сезонности
             st.markdown("---")
-            st.subheader("Рекомендации на основе сезонности")
+            st.subheader("Seasonality Recommendations")
             
             recommendations = []
             
-            if most_expensive_month['Месяц'] in [5, 6, 7]:  # Весна/лето
-                recommendations.append("**Пик цен** приходится на весенне-летние месяцы")
-            elif most_expensive_month['Месяц'] in [11, 12, 1]:  # Зима
-                recommendations.append("**Высокие цены** наблюдаются в зимние месяцы")
+            if most_expensive_month['Month'] in [5, 6, 7]:  # Весна/лето
+                recommendations.append("**Price peak** occurs in spring/summer months")
+            elif most_expensive_month['Month'] in [11, 12, 1]:  # Зима
+                recommendations.append("**High prices** observed in winter months")
             
-            if cheapest_month['Месяц'] in [9, 10]:  # Осень
-                recommendations.append("**Лучшее время для покупки** - осенние месяцы")
+            if cheapest_month['Month'] in [9, 10]:  # Осень
+                recommendations.append("**Best time to buy** is autumn months")
             
-            if busiest_month['Количество продаж'] > monthly_analysis['Количество продаж'].mean() * 1.3:
-                recommendations.append("**Пик активности** рынка в определенные месяцы")
+            if busiest_month['Sales Count'] > monthly_analysis['Sales Count'].mean() * 1.3:
+                recommendations.append("**Peak market activity** in certain months")
             
             for i, rec in enumerate(recommendations, 1):
                 st.write(f"{i}. {rec}")
             
             # Детальная таблица
             st.markdown("---")
-            st.subheader("Детальная статистика по месяцам")
+            st.subheader("Detailed Monthly Statistics")
             
             display_stats = monthly_analysis.copy()
-            display_stats['Цена за кв.фут'] = display_stats['Медианная цена'] / display_stats['Медианная площадь']
+            display_stats['Price per Sq Ft'] = display_stats['Median Price'] / display_stats['Median Area']
             
             st.dataframe(
                 display_stats.style.format({
-                    'Месяц': '{:.0f}',
-                    'Медианная цена': '${:,.0f}',
-                    'Количество продаж': '{:,.0f}',
-                    'Стд. отклонение': '${:,.0f}',
-                    'Медианная цена за кв.фут': '${:.2f}',
-                    'Медианная площадь': '{:,.0f}',
-                    'Норм. цена': '{:.3f}',
-                    'Норм. количество': '{:.3f}',
-                    'Цена за кв.фут': '${:.2f}'
+                    'Month': '{:.0f}',
+                    'Median Price': '${:,.0f}',
+                    'Sales Count': '{:,.0f}',
+                    'Std Deviation': '${:,.0f}',
+                    'Median Price per Sq Ft': '${:.2f}',
+                    'Median Area': '{:,.0f}',
+                    'Normalized Price': '{:.3f}',
+                    'Normalized Count': '{:.3f}',
+                    'Price per Sq Ft': '${:.2f}'
                 }),
                 use_container_width=True,
                 height=400
             )
     
     # Модель 3: Классификация по ценовым категориям
-    elif model_type == "Классификация по ценовым категориям":
-        st.subheader("Классификация объектов по ценовым категориям")
+    elif model_type == "Price Category Classification":
+        st.subheader("Property Price Category Classification")
         
         if 'SALE PRICE' not in filtered_df.columns:
-            st.error("В данных отсутствует информация о цене продажи.")
+            st.error("Data does not contain sale price information.")
         else:
             # Создаем целевые категории
             classification_df = filtered_df.copy()
@@ -1007,7 +986,7 @@ elif page == "Прогнозные модели":
             classification_df['PRICE_CATEGORY'] = pd.cut(
                 classification_df['SALE PRICE'],
                 bins=[0, price_33, price_66, classification_df['SALE PRICE'].max()],
-                labels=['Дешевый', 'Средний', 'Дорогой']
+                labels=['Cheap', 'Medium', 'Expensive']
             )
             
             # Преобразуем в числовой формат
@@ -1023,7 +1002,7 @@ elif page == "Прогнозные модели":
                 fig = px.pie(
                     values=category_counts.values,
                     names=category_counts.index,
-                    title='Распределение объектов по ценовым категориям',
+                    title='Property Distribution by Price Category',
                     hole=0.4,
                     color_discrete_sequence=px.colors.qualitative.Set2
                 )
@@ -1038,28 +1017,28 @@ elif page == "Прогнозные модели":
                     'TOTAL UNITS': 'median'
                 }).round(2)
                 
-                category_stats.columns = ['Медианная цена', 'Минимальная цена', 'Максимальная цена',
-                                         'Медианная площадь', 'Медианный год постройки', 'Медианное кол-во единиц']
+                category_stats.columns = ['Median Price', 'Min Price', 'Max Price',
+                                         'Median Area', 'Median Year Built', 'Median Units']
                 
-                category_stats['Цена за кв.фут'] = category_stats['Медианная цена'] / category_stats['Медианная площадь']
+                category_stats['Price per Sq Ft'] = category_stats['Median Price'] / category_stats['Median Area']
                 
-                st.write("**Характеристики по категориям:**")
+                st.write("**Category Characteristics:**")
                 st.dataframe(
                     category_stats.style.format({
-                        'Медианная цена': '${:,.0f}',
-                        'Минимальная цена': '${:,.0f}',
-                        'Максимальная цена': '${:,.0f}',
-                        'Медианная площадь': '{:,.0f}',
-                        'Медианный год постройки': '{:.0f}',
-                        'Медианное кол-во единиц': '{:.1f}',
-                        'Цена за кв.фут': '${:.2f}'
+                        'Median Price': '${:,.0f}',
+                        'Min Price': '${:,.0f}',
+                        'Max Price': '${:,.0f}',
+                        'Median Area': '{:,.0f}',
+                        'Median Year Built': '{:.0f}',
+                        'Median Units': '{:.1f}',
+                        'Price per Sq Ft': '${:.2f}'
                     }),
                     use_container_width=True
                 )
             
             # Обучение модели классификации
             st.markdown("---")
-            st.subheader("Модель классификации")
+            st.subheader("Classification Model")
             
             # Выбираем признаки
             features_class = ['GROSS SQUARE FEET', 'BOROUGH', 'YEAR BUILT', 
@@ -1074,7 +1053,7 @@ elif page == "Прогнозные модели":
             y_class = y_class[X_class.index]
             
             if len(X_class) < 50:
-                st.error("Недостаточно данных для обучения модели классификации.")
+                st.error("Not enough data for classification model training.")
             else:
                 # Кодируем категориальные переменные
                 categorical_cols_class = X_class.select_dtypes(include=['object']).columns
@@ -1089,7 +1068,7 @@ elif page == "Прогнозные модели":
                 )
                 
                 # Обучаем модель
-                st.write("**Обучение модели Random Forest Classifier...**")
+                st.write("**Training Random Forest Classifier...**")
                 model_class = RandomForestClassifier(
                     n_estimators=100,
                     max_depth=10,
@@ -1122,33 +1101,33 @@ elif page == "Прогнозные модели":
                     st.metric("F1-Score", f"{f1:.3f}")                            
                 
                 # Важность признаков для классификации
-                st.subheader("Важность признаков для классификации")
+                st.subheader("Feature Importance for Classification")
                 
                 if hasattr(model_class, 'feature_importances_'):
                     feature_importance_class = pd.DataFrame({
-                        'Признак': X_class_encoded.columns,
-                        'Важность': model_class.feature_importances_
-                    }).sort_values('Важность', ascending=False).head(15)
+                        'Feature': X_class_encoded.columns,
+                        'Importance': model_class.feature_importances_
+                    }).sort_values('Importance', ascending=False).head(15)
                     
                     fig = px.bar(
                         feature_importance_class,
-                        x='Важность',
-                        y='Признак',
+                        x='Importance',
+                        y='Feature',
                         orientation='h',
-                        title='Топ-15 важнейших признаков для классификации',
-                        color='Важность'
+                        title='Top 15 Most Important Features for Classification',
+                        color='Importance'
                     )
                     st.plotly_chart(fig, use_container_width=True)
                 
                 # Интерактивная классификация
                 st.markdown("---")
-                st.subheader("Интерактивная классификация объекта")
+                st.subheader("Interactive Property Classification")
                 
                 col1, col2 = st.columns(2)
                 
                 with col1:
                     class_sqft = st.number_input(
-                        "Общая площадь (кв. фут)",
+                        "Gross Square Feet",
                         min_value=100,
                         max_value=100000,
                         value=1500,
@@ -1157,20 +1136,20 @@ elif page == "Прогнозные модели":
                     )
                     
                     class_borough = st.selectbox(
-                        "Округ",
+                        "Borough",
                         options=sorted(classification_df['BOROUGH'].unique()),
                         format_func=lambda x: {
-                            1: 'Манхэттен',
-                            2: 'Бруклин',
-                            3: 'Квинс',
-                            4: 'Бронкс',
-                            5: 'Стэтен-Айленд'
+                            1: 'Manhattan',
+                            2: 'Brooklyn',
+                            3: 'Queens',
+                            4: 'Bronx',
+                            5: 'Staten Island'
                         }.get(x, x),
                         key='class_borough'
                     )
                     
                     class_year = st.number_input(
-                        "Год постройки",
+                        "Year Built",
                         min_value=1700,
                         max_value=datetime.now().year,
                         value=1990,
@@ -1180,7 +1159,7 @@ elif page == "Прогнозные модели":
                 
                 with col2:
                     class_units = st.number_input(
-                        "Количество единиц",
+                        "Total Units",
                         min_value=1,
                         max_value=1000,
                         value=2,
@@ -1189,7 +1168,7 @@ elif page == "Прогнозные модели":
                     )
                     
                     class_land_sqft = st.number_input(
-                        "Площадь земли (кв. фут)",
+                        "Land Square Feet",
                         min_value=100,
                         max_value=1000000,
                         value=2000,
@@ -1200,12 +1179,12 @@ elif page == "Прогнозные модели":
                     if 'BUILDING CLASS CATEGORY' in classification_df.columns:
                         class_building_types = sorted(classification_df['BUILDING CLASS CATEGORY'].unique())
                         class_building_type = st.selectbox(
-                            "Тип здания",
+                            "Building Type",
                             options=class_building_types,
                             key='class_building_type'
                         )
                 
-                if st.button("Классифицировать объект"):
+                if st.button("Classify Property"):
                     # Создаем DataFrame с введенными данными
                     input_class_data = pd.DataFrame({
                         'GROSS SQUARE FEET': [class_sqft],
@@ -1243,36 +1222,36 @@ elif page == "Прогнозные модели":
                     category_name = le.inverse_transform([predicted_class])[0]
                     
                     st.success(f"""
-                    **Результат классификации: {category_name}**
+                    **Classification Result: {category_name}**
                     
-                    Вероятности по категориям:
-                    - Дешевый: {predicted_proba[0]*100:.1f}%
-                    - Средний: {predicted_proba[1]*100:.1f}%
-                    - Дорогой: {predicted_proba[2]*100:.1f}%
+                    Category probabilities:
+                    - Cheap: {predicted_proba[0]*100:.1f}%
+                    - Medium: {predicted_proba[1]*100:.1f}%
+                    - Expensive: {predicted_proba[2]*100:.1f}%
                     
-                    **Ожидаемый ценовой диапазон:**
-                    - От ${min_price:,.0f} до ${max_price:,.0f}
-                    - Средняя цена категории: ${category_stats.loc[category_name, 'Медианная цена']:,.0f}
+                    **Expected price range:**
+                    - From ${min_price:,.0f} to ${max_price:,.0f}
+                    - Average category price: ${category_stats.loc[category_name, 'Median Price']:,.0f}
                     
-                    **Типичные характеристики категории "{category_name}":**
-                    - Площадь: {category_stats.loc[category_name, 'Медианная площадь']:,.0f} кв.фут
-                    - Год постройки: {int(category_stats.loc[category_name, 'Медианный год постройки'])}
-                    - Цена за кв.фут: ${category_stats.loc[category_name, 'Цена за кв.фут']:.2f}
+                    **Typical characteristics of "{category_name}" category:**
+                    - Area: {category_stats.loc[category_name, 'Median Area']:,.0f} sq ft
+                    - Year built: {int(category_stats.loc[category_name, 'Median Year Built'])}
+                    - Price per sq ft: ${category_stats.loc[category_name, 'Price per Sq Ft']:.2f}
                     """)
                     
                     # Визуализация вероятностей
                     prob_df = pd.DataFrame({
-                        'Категория': le.classes_,
-                        'Вероятность (%)': predicted_proba * 100
+                        'Category': le.classes_,
+                        'Probability (%)': predicted_proba * 100
                     })
                     
                     fig = px.bar(
                         prob_df,
-                        x='Категория',
-                        y='Вероятность (%)',
-                        title='Вероятности принадлежности к ценовым категориям',
-                        color='Вероятность (%)',
-                        text='Вероятность (%)'
+                        x='Category',
+                        y='Probability (%)',
+                        title='Price Category Membership Probabilities',
+                        color='Probability (%)',
+                        text='Probability (%)'
                     )
                     fig.update_traces(texttemplate='%{text:.1f}%', textposition='outside')
                     st.plotly_chart(fig, use_container_width=True)
