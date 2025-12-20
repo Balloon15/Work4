@@ -591,23 +591,7 @@ elif page == "Анализ рынка":
                 # Заменяем только аномально большие выбросы на медианную цену
                 processed_df = analysis_df.copy()
                 processed_df.loc[large_outliers_mask, 'PRICE_PER_SQFT'] = median_price_sqft
-                
-                # Статистика обработки
-                with st.expander("Статистика обработки выбросов"):
-                    col1, col2 = st.columns(2)
-                    with col1:
-                        st.write(f"**Медианная цена:** ${median_price_sqft:.2f}")
-                        st.write(f"**Q1 (25%):** ${q1:.2f}")
-                        st.write(f"**Q3 (75%):** ${q3:.2f}")
-                        st.write(f"**IQR:** ${iqr:.2f}")
-                    with col2:
-                        st.write(f"**Верхняя граница (IQR):** ${upper_bound:.2f}")
-                        st.write(f"**Итоговая верхняя граница:** ${final_upper_bound:.2f}")
-                        st.write(f"**Большие выбросы заменены:** {n_large_outliers}")
-                        st.write(f"**Макс. цена после обработки:** ${processed_df['PRICE_PER_SQFT'].max():.2f}")
-                
-                if n_large_outliers > 0:
-                    st.info(f"Заменено {n_large_outliers} аномально больших значений (>${final_upper_bound:.0f} за кв.фут) на медианную цену (${median_price_sqft:.2f})")
+                               
                 
                 # ВИЗУАЛИЗАЦИЯ
                 col1, col2 = st.columns(2)
@@ -670,57 +654,7 @@ elif page == "Анализ рынка":
                         fig.update_layout(yaxis_tickformat='$,.0f')
                         st.plotly_chart(fig, use_container_width=True)
                 
-                # СРАВНИТЕЛЬНАЯ ИНФОРМАЦИЯ
-                st.markdown("---")
-                
-                # Реалистичные диапазоны для справки
-                st.write("**Справочно: типичные диапазоны цен за кв.фут в Нью-Йорке:**")
-                
-                typical_ranges = {
-                    'Manhattan': {'min': 1000, 'max': 2500, 'color': 'green'},
-                    'Brooklyn': {'min': 600, 'max': 1500, 'color': 'blue'},
-                    'Queens': {'min': 400, 'max': 900, 'color': 'orange'},
-                    'Bronx': {'min': 300, 'max': 600, 'color': 'red'},
-                    'Staten Island': {'min': 350, 'max': 700, 'color': 'purple'}
-                }
-                
-                # Создаем сравнительную таблицу
-                if 'BOROUGH' in processed_df.columns:
-                    comparison_data = []
-                    temp_df = processed_df.copy()
-                    temp_df['BOROUGH_NAME'] = temp_df['BOROUGH'].map(borough_map)
-                    
-                    for borough_name, ranges in typical_ranges.items():
-                        if borough_name in temp_df['BOROUGH_NAME'].unique():
-                            borough_data = temp_df[temp_df['BOROUGH_NAME'] == borough_name]
-                            actual_median = borough_data['PRICE_PER_SQFT'].median()
-                            
-                            comparison_data.append({
-                                'Округ': borough_name,
-                                'Факт. медиана ($)': actual_median,
-                                'Типичный минимум ($)': ranges['min'],
-                                'Типичный максимум ($)': ranges['max'],
-                                'В пределах типичного': ranges['min'] <= actual_median <= ranges['max']
-                            })
-                    
-                    if comparison_data:
-                        comparison_df = pd.DataFrame(comparison_data)
-                        
-                        # Добавляем стиль для визуализации
-                        def highlight_within_range(val):
-                            if isinstance(val, bool):
-                                return 'background-color: #90EE90' if val else 'background-color: #FFB6C1'
-                            return ''
-                        
-                        st.dataframe(
-                            comparison_df.style.format({
-                                'Факт. медиана ($)': '${:,.0f}',
-                                'Типичный минимум ($)': '${:,.0f}',
-                                'Типичный максимум ($)': '${:,.0f}'
-                            }).applymap(highlight_within_range, subset=['В пределах типичного']),
-                            use_container_width=True
-                        )
-            
+               
             else:
                 st.warning("Нет данных о цене за квадратный фут. Проверьте наличие колонок 'SALE PRICE' и 'GROSS SQUARE FEET'.")
 # Страница 3: Прогнозные модели
