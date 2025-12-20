@@ -57,7 +57,7 @@ def translate_columns(df):
     df = df.copy()
     translated_cols = []
     for col in df.columns:
-        # Убираем лишние пробелы в начале/конце названий колонок
+        # Убираем лишние пробелы в названиях колонок
         col_stripped = col.strip()
         translated_cols.append(COLUMN_TRANSLATIONS.get(col_stripped, col_stripped))
     df.columns = translated_cols
@@ -74,39 +74,11 @@ def reverse_translate_column(russian_name):
 @st.cache_data
 def load_data():
     try:
-        # Пробуем разные варианты имен файлов
-        try:
-            data = pd.read_csv("nyc-rolling-sales.csv")
-        except FileNotFoundError:
-            try:
-                data = pd.read_csv("nyc-rolling-sales.csv", encoding='latin-1')
-            except:
-                # Создаем демо-данные для тестирования
-                st.warning("Файл 'nyc-rolling-sales.csv' не найден. Создаю демо-данные для тестирования.")
-                np.random.seed(42)
-                n_samples = 1000
-                
-                data = pd.DataFrame({
-                    'BOROUGH': np.random.choice([1, 2, 3, 4, 5], n_samples),
-                    'NEIGHBORHOOD': np.random.choice(['Manhattan', 'Brooklyn', 'Queens', 'Bronx', 'Staten Island'], n_samples),
-                    'BUILDING CLASS CATEGORY': np.random.choice(['01 ONE FAMILY DWELLINGS', '02 TWO FAMILY DWELLINGS', '03 THREE FAMILY DWELLINGS'], n_samples),
-                    'BLOCK': np.random.randint(1, 1000, n_samples),
-                    'LOT': np.random.randint(1, 100, n_samples),
-                    'SALE PRICE': np.random.normal(500000, 300000, n_samples).clip(10000, 5000000),
-                    'SALE DATE': pd.date_range('2022-01-01', periods=n_samples, freq='D'),
-                    'GROSS SQUARE FEET': np.random.normal(1500, 500, n_samples).clip(500, 5000),
-                    'LAND SQUARE FEET': np.random.normal(2000, 800, n_samples).clip(500, 10000),
-                    'YEAR BUILT': np.random.randint(1900, 2023, n_samples),
-                    'TOTAL UNITS': np.random.randint(1, 10, n_samples),
-                    'RESIDENTIAL UNITS': np.random.randint(1, 10, n_samples),
-                    'COMMERCIAL UNITS': np.random.randint(0, 3, n_samples),
-                    'ZIP CODE': np.random.randint(10001, 11695, n_samples)
-                })
+        data = pd.read_csv("nyc-rolling-sales.csv")
         
         # Убираем лишние пробелы в названиях колонок
         data.columns = data.columns.str.strip()
         
-        # Преобразуем числовые колонки
         numeric_columns = ['SALE PRICE', 'LAND SQUARE FEET', 'GROSS SQUARE FEET', 
                           'YEAR BUILT', 'RESIDENTIAL UNITS', 'COMMERCIAL UNITS', 
                           'TOTAL UNITS']
@@ -116,54 +88,59 @@ def load_data():
                 # Преобразуем строки в числа, заменяя нечисловые значения на NaN
                 data[col] = pd.to_numeric(data[col].astype(str).str.replace(',', '').str.replace('$', ''), errors='coerce')
         
-        # Обрабатываем дату
         if 'SALE DATE' in data.columns:
             data['SALE DATE'] = pd.to_datetime(data['SALE DATE'], errors='coerce')
         
-        # Очистка выбросов в ценах
+        # ОЧИСТКА ВЫБРОСОВ В ЦЕНАХ
         if 'SALE PRICE' in data.columns:
-            # Удаляем нулевые и отрицательные цены
+            # 1. Удаляем нулевые и отрицательные цены
             data = data[data['SALE PRICE'] > 0]
             
-            # Удаляем слишком низкие цены (< $10,000) и слишком высокие (> $50M)
-            data = data[(data['SALE PRICE'] >= 10000) & (data['SALE PRICE'] <= 50000000)]
+            # 2. Удаляем слишком низкие цены (< $10,000)
+            data = data[data['SALE PRICE'] >= 10000]
             
-            # IQR метод для удаления выбросов
-            Q1 = data['SALE PRICE'].quantile(0.25)
-            Q3 = data['SALE PRICE'].quantile(0.75)
-            IQR = Q3 - Q1
-            lower_bound = Q1 - 1.5 * IQR
-            upper_bound = Q3 + 1.5 * IQR
+            # 3. Удаляем экстремально высокие цены (> $50 миллионов)
+            data = data[data['SALE PRICE'] <= 50_000_000]
+            
+            # 4. Статистическая очистка (IQR метод)
+            q1 = data['SALE PRICE'].quantile(0.25)
+            q3 = data['SALE PRICE'].quantile(0.75)
+            iqr = q3 - q1
+            lower_bound = q1 - 1.5 * iqr
+            upper_bound = q3 + 1.5 * iqr
             data = data[(data['SALE PRICE'] >= lower_bound) & (data['SALE PRICE'] <= upper_bound)]
         
         # Очистка года постройки
         if 'YEAR BUILT' in data.columns:
             current_year = datetime.now().year
             data = data[(data['YEAR BUILT'] >= 1700) & (data['YEAR BUILT'] <= current_year)]
+            data = data[data['YEAR BUILT'] > 0]
         
-        # Очистка площади
+        # Очистка площади - ОЧЕНЬ ВАЖНО для цены за кв.фут
         if 'GROSS SQUARE FEET' in data.columns:
-            data = data[(data['GROSS SQUARE FEET'] > 0) & (data['GROSS SQUARE FEET'] <= 1000000)]
+            # Удаляем нулевые и отрицательные площади
+            data = data[data['GROSS SQUARE FEET'] > 0]
+            # Удаляем слишком маленькие площади (менее 100 кв.фут)
+            data = data[data['GROSS SQUARE FEET'] >= 100]
+            # Удаляем слишком большие площади
+            data = data[data['GROSS SQUARE FEET'] <= 1000000]
         
-        # Удаляем строки с пропущенными важными значениями
-        important_cols = ['SALE PRICE', 'GROSS SQUARE FEET', 'BOROUGH']
-        for col in important_cols:
-            if col in data.columns:
-                data = data.dropna(subset=[col])
+        if 'LAND SQUARE FEET' in data.columns:
+            data = data[data['LAND SQUARE FEET'] > 0]
+            data = data[data['LAND SQUARE FEET'] >= 100]
+            data = data[data['LAND SQUARE FEET'] <= 1000000]
         
         return data
         
     except Exception as e:
         st.error(f"Ошибка при загрузке данных: {str(e)}")
-        # Возвращаем пустой DataFrame с ожидаемыми колонками
-        return pd.DataFrame(columns=COLUMN_TRANSLATIONS.keys())
+        return pd.DataFrame()
 
 # Загружаем данные
 df = load_data()
 
-# Проверяем, есть ли данные
 if df.empty:
-    st.error("Данные не загружены. Убедитесь, что файл 'nyc-rolling-sales.csv' находится в той же директории.")
+    st.error("Данные не загружены. Проверьте наличие файла 'nyc-rolling-sales.csv'.")
     st.stop()
 
 # Создаем навигацию
@@ -177,6 +154,9 @@ page = st.sidebar.radio(
 st.sidebar.markdown("---")
 st.sidebar.subheader("Фильтры данных")
 
+# Создаем копию с русскими названиями для фильтров
+df_russian = translate_columns(df.copy())
+
 # Фильтр по району
 if 'NEIGHBORHOOD' in df.columns:
     neighborhoods = ['Все'] + sorted(df['NEIGHBORHOOD'].dropna().unique().tolist())
@@ -186,7 +166,6 @@ if 'NEIGHBORHOOD' in df.columns:
     )
 else:
     selected_neighborhood = 'Все'
-    st.sidebar.warning("Колонка 'NEIGHBORHOOD' не найдена")
 
 # Фильтр по типу здания
 if 'BUILDING CLASS CATEGORY' in df.columns:
@@ -197,7 +176,6 @@ if 'BUILDING CLASS CATEGORY' in df.columns:
     )
 else:
     selected_building_class = 'Все'
-    st.sidebar.warning("Колонка 'BUILDING CLASS CATEGORY' не найдена")
 
 # Фильтр по году постройки
 year_range = (1800, 2023)
@@ -215,7 +193,7 @@ if 'YEAR BUILT' in df.columns:
             value=(min_year, max_year)
         )
     else:
-        st.sidebar.warning("Нет данных о годе постройки")
+        year_range = (1800, 2023)
 
 # Фильтр по цене
 price_range = (10000, 5000000)
@@ -230,8 +208,6 @@ if 'SALE PRICE' in df.columns:
         value=(realistic_min_price, realistic_max_price),
         step=10000
     )
-else:
-    st.sidebar.warning("Нет данных о цене продажи")
 
 # Применяем фильтры
 filtered_df = df.copy()
@@ -254,18 +230,28 @@ if 'SALE PRICE' in filtered_df.columns:
         (filtered_df['SALE PRICE'] <= price_range[1])
     ]
 
-# Создаем производные колонки
+# Создаем производные колонки с ОЧЕНЬ ВАЖНЫМИ ПРОВЕРКАМИ
 if 'SALE DATE' in filtered_df.columns:
     filtered_df['SALE_MONTH'] = filtered_df['SALE DATE'].dt.month
     filtered_df['SALE_YEAR'] = filtered_df['SALE DATE'].dt.year
     
+# Цена за квадратный фут - ОЧЕНЬ ВАЖНО ИСПРАВИТЬ ПРОБЛЕМУ С ДЕЛЕНИЕМ
 if all(col in filtered_df.columns for col in ['SALE PRICE', 'GROSS SQUARE FEET']):
-    filtered_df['PRICE_PER_SQFT'] = filtered_df['SALE PRICE'] / filtered_df['GROSS SQUARE FEET']
-    # Заменяем бесконечные значения на NaN
-    filtered_df['PRICE_PER_SQFT'] = filtered_df['PRICE_PER_SQFT'].replace([np.inf, -np.inf], np.nan)
+    # Убедимся, что нет нулевых или очень маленьких площадей
+    temp_df = filtered_df[(filtered_df['GROSS SQUARE FEET'] > 10) & (filtered_df['SALE PRICE'] > 0)].copy()
+    if not temp_df.empty:
+        filtered_df['PRICE_PER_SQFT'] = filtered_df['SALE PRICE'] / filtered_df['GROSS SQUARE FEET']
+        # Заменяем бесконечные значения и NaN
+        filtered_df['PRICE_PER_SQFT'] = filtered_df['PRICE_PER_SQFT'].replace([np.inf, -np.inf], np.nan)
+        # Удаляем аномальные значения цены за кв.фут
+        filtered_df = filtered_df[(filtered_df['PRICE_PER_SQFT'] > 1) & (filtered_df['PRICE_PER_SQFT'] < 5000)]
+    else:
+        filtered_df['PRICE_PER_SQFT'] = np.nan
     
 if 'YEAR BUILT' in filtered_df.columns:
     filtered_df['BUILDING_AGE'] = datetime.now().year - filtered_df['YEAR BUILT']
+    # Ограничиваем возраст реалистичными значениями
+    filtered_df = filtered_df[(filtered_df['BUILDING_AGE'] >= 0) & (filtered_df['BUILDING_AGE'] <= 300)]
 
 # Создаем DataFrame с русскими названиями для отображения
 filtered_df_russian = translate_columns(filtered_df.copy())
@@ -294,7 +280,7 @@ elif page == "Визуализация данных":
     st.title("Визуализация данных о продажах недвижимости Нью-Йорка")
     
     if filtered_df.empty:
-        st.warning("Нет данных, соответствующих выбранным фильтрам. Попробуйте изменить фильтры.")
+        st.warning("Нет данных, соответствующих выбранным фильтрам.")
     else:
         # KPI карточки
         col1, col2, col3, col4 = st.columns(4)
@@ -306,22 +292,16 @@ elif page == "Визуализация данных":
             if 'SALE PRICE' in filtered_df.columns:
                 median_price = filtered_df['SALE PRICE'].median()
                 st.metric("Медианная цена ($)", f"{median_price:,.0f}")
-            else:
-                st.metric("Медианная цена", "Нет данных")
         
         with col3:
             if 'SALE DATE' in filtered_df.columns:
                 unique_months = filtered_df['SALE_MONTH'].nunique()
                 st.metric("Месяцев данных", unique_months)
-            else:
-                st.metric("Месяцев данных", "Нет данных")
         
         with col4:
             if 'NEIGHBORHOOD' in filtered_df.columns:
                 unique_neighborhoods = filtered_df['NEIGHBORHOOD'].nunique()
                 st.metric("Количество районов", unique_neighborhoods)
-            else:
-                st.metric("Количество районов", "Нет данных")
 
         st.markdown("---")
         
@@ -368,21 +348,16 @@ elif page == "Визуализация данных":
         if st.checkbox("Показать статистики по числовым колонкам"):
             numeric_cols = filtered_df.select_dtypes(include=[np.number]).columns.tolist()
             if numeric_cols:
-                # Преобразуем английские названия в русские для отображения
-                numeric_cols_russian = []
-                for col in numeric_cols:
-                    # Ищем русское название в словаре
-                    rus_name = None
-                    for eng, rus in COLUMN_TRANSLATIONS.items():
-                        if eng == col:
-                            rus_name = rus
-                            break
-                    numeric_cols_russian.append(rus_name if rus_name else col)
-                
                 stats_df = filtered_df[numeric_cols].describe().T
                 stats_df = stats_df[['count', 'mean', 'std', 'min', '25%', '50%', '75%', 'max']]
                 stats_df.columns = ['Кол-во', 'Среднее', 'Стд. откл.', 'Мин.', '25%', 'Медиана', '75%', 'Макс.']
-                stats_df.index = numeric_cols_russian
+                
+                # Преобразуем индексы в русские названия
+                stats_df_index_russian = []
+                for idx in stats_df.index:
+                    rus_name = COLUMN_TRANSLATIONS.get(idx, idx)
+                    stats_df_index_russian.append(rus_name)
+                stats_df.index = stats_df_index_russian
                 
                 st.dataframe(stats_df.style.format("{:,.2f}"), use_container_width=True)
         
@@ -495,7 +470,7 @@ elif page == "Анализ рынка":
     st.title("Анализ рынка недвижимости Нью-Йорка")
     
     if filtered_df.empty:
-        st.warning("Нет данных для анализа. Попробуйте изменить фильтры.")
+        st.warning("Нет данных для анализа.")
     else:
         analysis_type = st.selectbox(
             "Выберите тип анализа:",
@@ -514,8 +489,12 @@ elif page == "Анализ рынка":
                 
                 neighborhood_stats.columns = ['Медианная цена', 'Количество продаж', 'Медианная площадь']
                 
-                # Добавляем цену за кв.фут (избегаем деления на ноль)
-                neighborhood_stats['Цена за кв.фут'] = neighborhood_stats['Медианная цена'] / neighborhood_stats['Медианная площадь'].replace(0, np.nan)
+                # Добавляем цену за кв.фут (с проверкой деления на ноль)
+                neighborhood_stats['Цена за кв.фут'] = np.where(
+                    neighborhood_stats['Медианная площадь'] > 0,
+                    neighborhood_stats['Медианная цена'] / neighborhood_stats['Медианная площадь'],
+                    np.nan
+                )
                 neighborhood_stats = neighborhood_stats.dropna(subset=['Цена за кв.фут'])
                 
                 # Сортируем по медианной цене
@@ -561,69 +540,107 @@ elif page == "Анализ рынка":
                 
                 building_stats.columns = ['Медианная цена', 'Количество продаж', 'Медианная площадь']
                 
-                # Топ-10 типов по цене
-                top_buildings = building_stats.nlargest(10, 'Медианная цена')
+                # Добавляем цену за кв.фут
+                building_stats['Цена за кв.фут'] = np.where(
+                    building_stats['Медианная площадь'] > 0,
+                    building_stats['Медианная цена'] / building_stats['Медианная площадь'],
+                    np.nan
+                )
+                building_stats = building_stats.dropna(subset=['Цена за кв.фут'])
+                
+                # Топ-10 типов по цене за кв.фут
+                top_buildings = building_stats.nlargest(10, 'Цена за кв.фут')
                 
                 fig = px.bar(
                     top_buildings.reset_index(),
                     x='BUILDING CLASS CATEGORY',
-                    y='Медианная цена',
-                    title='Топ-10 самых дорогих типов недвижимости',
-                    color='Медианная цена'
+                    y='Цена за кв.фут',
+                    title='Топ-10 самых дорогих типов недвижимости (цена за кв.фут)',
+                    color='Цена за кв.фут'
                 )
                 fig.update_xaxes(tickangle=45, tickfont=dict(size=10))
-                fig.update_layout(yaxis_tickformat=',')
+                fig.update_layout(yaxis_tickformat='$,.0f')
                 st.plotly_chart(fig, use_container_width=True)
         
         elif analysis_type == "Стоимость квадратного фута":
             st.subheader("Анализ стоимости квадратного фута")
             
-            if 'PRICE_PER_SQFT' in filtered_df.columns:
-                # Удаляем выбросы в цене за кв.фут
+            if 'PRICE_PER_SQFT' in filtered_df.columns and not filtered_df['PRICE_PER_SQFT'].isna().all():
+                # Удаляем NaN значения
                 valid_data = filtered_df[filtered_df['PRICE_PER_SQFT'].notna()]
-                if not valid_data.empty:
-                    q1 = valid_data['PRICE_PER_SQFT'].quantile(0.01)
-                    q3 = valid_data['PRICE_PER_SQFT'].quantile(0.99)
-                    price_per_sqft_filtered = valid_data[(valid_data['PRICE_PER_SQFT'] >= q1) & 
-                                                         (valid_data['PRICE_PER_SQFT'] <= q3)]
-                    
-                    col1, col2 = st.columns(2)
-                    
-                    with col1:
-                        fig = px.histogram(
-                            price_per_sqft_filtered,
-                            x='PRICE_PER_SQFT',
-                            nbins=50,
-                            title="Распределение цены за кв.фут",
-                            labels={'PRICE_PER_SQFT': 'Цена за кв.фут ($)'}
+                
+                # Статистика для отладки
+                with st.expander("Отладочная информация"):
+                    st.write(f"Всего записей с ценой за кв.фут: {len(valid_data)}")
+                    st.write(f"Мин. цена за кв.фут: ${valid_data['PRICE_PER_SQFT'].min():.2f}")
+                    st.write(f"Макс. цена за кв.фут: ${valid_data['PRICE_PER_SQFT'].max():.2f}")
+                    st.write(f"Медиана: ${valid_data['PRICE_PER_SQFT'].median():.2f}")
+                    st.write(f"Среднее: ${valid_data['PRICE_PER_SQFT'].mean():.2f}")
+                
+                # Удаляем выбросы в цене за кв.фут - используем более строгие границы
+                q1 = valid_data['PRICE_PER_SQFT'].quantile(0.05)  # 5-й перцентиль
+                q3 = valid_data['PRICE_PER_SQFT'].quantile(0.95)  # 95-й перцентиль
+                
+                # Дополнительно ограничиваем разумными границами для Нью-Йорка
+                reasonable_min = 10  # Минимум $10 за кв.фут
+                reasonable_max = 2000  # Максимум $2000 за кв.фут
+                
+                price_per_sqft_filtered = valid_data[
+                    (valid_data['PRICE_PER_SQFT'] >= max(q1, reasonable_min)) & 
+                    (valid_data['PRICE_PER_SQFT'] <= min(q3, reasonable_max))
+                ]
+                
+                st.write(f"После фильтрации осталось: {len(price_per_sqft_filtered)} записей")
+                
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    fig = px.histogram(
+                        price_per_sqft_filtered,
+                        x='PRICE_PER_SQFT',
+                        nbins=50,
+                        title="Распределение цены за кв.фут",
+                        labels={'PRICE_PER_SQFT': 'Цена за кв.фут ($)'}
+                    )
+                    # Ограничиваем ось X для лучшей визуализации
+                    fig.update_layout(xaxis_range=[0, 1000])
+                    st.plotly_chart(fig, use_container_width=True)
+                
+                with col2:
+                    if 'BOROUGH' in price_per_sqft_filtered.columns:
+                        # Создаем отображение для borough
+                        borough_map = {
+                            1: 'Manhattan',
+                            2: 'Brooklyn', 
+                            3: 'Queens',
+                            4: 'Bronx',
+                            5: 'Staten Island'
+                        }
+                        
+                        # Создаем временную колонку для группировки
+                        temp_df = price_per_sqft_filtered.copy()
+                        temp_df['BOROUGH_NAME'] = temp_df['BOROUGH'].map(borough_map)
+                        
+                        # Группируем и удаляем NaN
+                        borough_price_sqft = temp_df.groupby('BOROUGH_NAME')['PRICE_PER_SQFT'].median().dropna().sort_values(ascending=False)
+                        
+                        # Отладочная информация
+                        st.write("**Средняя цена за кв.фут по округам:**")
+                        for borough, price in borough_price_sqft.items():
+                            st.write(f"{borough}: ${price:.2f}")
+                        
+                        fig = px.bar(
+                            x=borough_price_sqft.index,
+                            y=borough_price_sqft.values,
+                            title='Средняя цена за кв.фут по округам',
+                            labels={'x': 'Округ', 'y': 'Цена за кв.фут ($)'},
+                            color=borough_price_sqft.values,
+                            color_continuous_scale='Viridis'
                         )
+                        fig.update_layout(yaxis_tickformat='$,.0f')
                         st.plotly_chart(fig, use_container_width=True)
-                    
-                    with col2:
-                        if 'BOROUGH' in price_per_sqft_filtered.columns:
-                            # Создаем отображение для borough
-                            borough_map = {
-                                1: 'Manhattan',
-                                2: 'Brooklyn', 
-                                3: 'Queens',
-                                4: 'Bronx',
-                                5: 'Staten Island'
-                            }
-                            
-                            # Создаем временную колонку для группировки
-                            temp_df = price_per_sqft_filtered.copy()
-                            temp_df['BOROUGH_NAME'] = temp_df['BOROUGH'].map(borough_map)
-                            
-                            # Группируем
-                            borough_price_sqft = temp_df.groupby('BOROUGH_NAME')['PRICE_PER_SQFT'].median().sort_values(ascending=False)
-                            
-                            fig = px.bar(
-                                x=borough_price_sqft.index,
-                                y=borough_price_sqft.values,
-                                title='Средняя цена за кв.фут по округам',
-                                labels={'x': 'Округ', 'y': 'Цена за кв.фут ($)'}
-                            )
-                            st.plotly_chart(fig, use_container_width=True)
+            else:
+                st.warning("Нет данных о цене за квадратный фут. Проверьте наличие колонок 'SALE PRICE' и 'GROSS SQUARE FEET'.")
         
         elif analysis_type == "Возраст vs Цена":
             st.subheader("Влияние возраста здания на цену")
@@ -642,6 +659,7 @@ elif page == "Анализ рынка":
                 
                 age_stats = filtered_df.groupby('AGE_CATEGORY').agg({
                     'SALE PRICE': 'median',
+                    'PRICE_PER_SQFT': 'median',
                     'GROSS SQUARE FEET': 'median'
                 }).reset_index()
                 
@@ -681,7 +699,7 @@ elif page == "Прогнозные модели":
     st.title("Прогнозные модели на основе данных")
     
     if filtered_df.empty:
-        st.warning("Нет данных для построения моделей. Попробуйте изменить фильтры.")
+        st.warning("Нет данных для построения моделей.")
     else:
         model_type = st.selectbox(
             "Выберите модель:",
@@ -693,7 +711,7 @@ elif page == "Прогнозные модели":
             st.subheader("Прогноз цены на основе характеристик объекта")
             
             if len(filtered_df) < 100:
-                st.error("Слишком мало данных для построения модели (нужно минимум 100 записей).")
+                st.error("Слишком мало данных для построения модели.")
             else:
                 # Подготовка данных для модели
                 st.write("**Подготовка данных...**")
@@ -745,7 +763,7 @@ elif page == "Прогнозные модели":
                         st.write("**Обучение модели Random Forest...**")
                         try:
                             model = RandomForestRegressor(
-                                n_estimators=50,  # Уменьшаем для скорости
+                                n_estimators=50,
                                 max_depth=10,
                                 random_state=42,
                                 n_jobs=-1
@@ -763,16 +781,15 @@ elif page == "Прогнозные модели":
                             
                             col1, col2, col3 = st.columns(3)
                             with col1:
-                                st.metric("MAE (Средняя абсолютная ошибка)", f"${mae:,.0f}")
+                                st.metric("MAE", f"${mae:,.0f}")
                             with col2:
-                                st.metric("RMSE (Среднеквадратичная ошибка)", f"${rmse:,.0f}")
+                                st.metric("RMSE", f"${rmse:,.0f}")
                             with col3:
-                                st.metric("R² (Коэффициент детерминации)", f"{r2:.3f}")
+                                st.metric("R²", f"{r2:.3f}")
                             
                             # Визуализация предсказаний
                             fig = go.Figure()
                             
-                            # Берем только 100 точек для визуализации
                             n_points = min(100, len(y_test))
                             fig.add_trace(go.Scatter(
                                 x=y_test.values[:n_points],
@@ -782,7 +799,6 @@ elif page == "Прогнозные модели":
                                 marker=dict(size=8, opacity=0.6)
                             ))
                             
-                            # Линия идеального предсказания
                             max_val = max(y_test.max(), y_pred.max())
                             min_val = min(y_test.min(), y_pred.min())
                             fig.add_trace(go.Scatter(
@@ -804,7 +820,7 @@ elif page == "Прогнозные модели":
                             st.plotly_chart(fig, use_container_width=True)
                             
                             # Важность признаков
-                            st.subheader("Важность признаков для предсказания цены")
+                            st.subheader("Важность признаков")
                             
                             if hasattr(model, 'feature_importances_'):
                                 feature_importance = pd.DataFrame({
@@ -817,7 +833,7 @@ elif page == "Прогнозные модели":
                                     x='Важность',
                                     y='Признак',
                                     orientation='h',
-                                    title='Топ-15 важнейших признаков для предсказания цены',
+                                    title='Топ-15 важнейших признаков',
                                     color='Важность'
                                 )
                                 st.plotly_chart(fig, use_container_width=True)
@@ -840,7 +856,7 @@ elif page == "Прогнозные модели":
                 
                 monthly_analysis.columns = ['Месяц', 'Медианная цена', 'Количество продаж', 'Медианная площадь']
                 
-                # Нормализуем данные для сравнения
+                # Нормализуем данные
                 monthly_analysis['Норм. цена'] = monthly_analysis['Медианная цена'] / monthly_analysis['Медианная цена'].mean()
                 monthly_analysis['Норм. количество'] = monthly_analysis['Количество продаж'] / monthly_analysis['Количество продаж'].mean()
                 
@@ -896,7 +912,7 @@ elif page == "Прогнозные модели":
                 fig.update_layout(
                     height=600,
                     showlegend=True,
-                    title_text="Анализ сезонности продаж недвижимости"
+                    title_text="Анализ сезонности продаж"
                 )
                 
                 fig.update_xaxes(title_text="Месяц", row=1, col=1)
@@ -947,9 +963,8 @@ elif page == "Прогнозные модели":
                         fig = px.pie(
                             values=category_counts.values,
                             names=category_counts.index,
-                            title='Распределение объектов по ценовым категориям',
-                            hole=0.4,
-                            color_discrete_sequence=px.colors.qualitative.Set2
+                            title='Распределение по ценовым категориям',
+                            hole=0.4
                         )
                         st.plotly_chart(fig, use_container_width=True)
                     
@@ -980,4 +995,4 @@ elif page == "Прогнозные модели":
                         )
                     
                 except Exception as e:
-                    st.error(f"Ошибка при подготовке данных для классификации: {str(e)}")
+                    st.error(f"Ошибка при подготовке данных: {str(e)}")
