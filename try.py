@@ -650,6 +650,54 @@ elif page == "Анализ рынка":
                     )
                     fig.update_layout(yaxis_tickformat='$,.0f')
                     st.plotly_chart(fig, use_container_width=True)
+
+    elif analysis_type == "Возраст vs Цена":
+        st.subheader("Влияние возраста здания на цену")
+        
+        if 'BUILDING_AGE' in filtered_df.columns and 'SALE PRICE' in filtered_df.columns:
+            # Группируем по возрастным категориям
+            age_bins = [0, 10, 25, 50, 100, 200, 500]
+            age_labels = ['0-10 лет', '11-25 лет', '26-50 лет', '51-100 лет', '101-200 лет', '200+ лет']
+            
+            filtered_df['AGE_CATEGORY'] = pd.cut(
+                filtered_df['BUILDING_AGE'],
+                bins=age_bins,
+                labels=age_labels,
+                right=False
+            )
+            
+            age_stats = filtered_df.groupby('AGE_CATEGORY').agg({
+                'SALE PRICE': 'median',
+                'PRICE_PER_SQFT': 'median',
+                'GROSS SQUARE FEET': 'median'
+            }).reset_index()
+            
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                fig = px.bar(
+                    age_stats,
+                    x='AGE_CATEGORY',
+                    y='SALE PRICE',
+                    title='Медианная цена по возрастным категориям',
+                    color='SALE PRICE'
+                )
+                fig.update_layout(yaxis_tickformat=',')
+                st.plotly_chart(fig, use_container_width=True)
+            
+            with col2:
+                fig = px.scatter(
+                    filtered_df,
+                    x='BUILDING_AGE',
+                    y='SALE PRICE',
+                    trendline="lowess",
+                    title='Зависимость цены от возраста здания',
+                    labels={'BUILDING_AGE': 'Возраст здания (лет)', 'SALE PRICE': 'Цена ($)'},
+                    opacity=0.3
+                )
+                fig.update_layout(yaxis_tickformat=',')
+                st.plotly_chart(fig, use_container_width=True)
+
                     
 # Страница 3: Прогнозные модели
 elif page == "Прогнозные модели":
