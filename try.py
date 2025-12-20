@@ -561,102 +561,102 @@ elif page == "Анализ рынка":
                 fig.update_xaxes(tickangle=45, tickfont=dict(size=10))
                 fig.update_layout(yaxis_tickformat='$,.0f')
                 st.plotly_chart(fig, use_container_width=True)
-                
-        elif analysis_type == "Стоимость квадратного фута":
-            st.subheader("Анализ стоимости квадратного фута")
-            
-            if 'PRICE_PER_SQFT' in filtered_df.columns and not filtered_df['PRICE_PER_SQFT'].isna().all():
-                # Создаем копию для анализа
-                analysis_df = filtered_df[filtered_df['PRICE_PER_SQFT'].notna()].copy()
-                
-                # Рассчитываем медианную цену за кв.фут
-                median_price_sqft = analysis_df['PRICE_PER_SQFT'].median()
-                
-                # Определяем верхнюю границу для выбросов (только большие значения)
-                # Используем IQR метод для определения верхней границы
-                q3 = analysis_df['PRICE_PER_SQFT'].quantile(0.75)
-                q1 = analysis_df['PRICE_PER_SQFT'].quantile(0.25)
-                iqr = q3 - q1
-                upper_bound = q3 + 1.5 * iqr
-                
-                # Дополнительно: устанавливаем абсолютную верхнюю границу
-                # Для Нью-Йорка разумная максимальная цена за кв.фут - $3000
-                reasonable_max = 3000
-                final_upper_bound = min(upper_bound, reasonable_max)
-                
-                # Находим аномально большие выбросы
-                large_outliers_mask = analysis_df['PRICE_PER_SQFT'] > final_upper_bound
-                n_large_outliers = large_outliers_mask.sum()
-                
-                # Заменяем только аномально большие выбросы на медианную цену
-                processed_df = analysis_df.copy()
-                processed_df.loc[large_outliers_mask, 'PRICE_PER_SQFT'] = median_price_sqft
-                               
-                
-                # ВИЗУАЛИЗАЦИЯ
-                col1, col2 = st.columns(2)
-                
-                with col1:
-                    # Гистограмма распределения после обработки
-                    fig = px.histogram(
-                        processed_df,
-                        x='PRICE_PER_SQFT',
-                        nbins=50,
-                        title="Распределение цены за кв.фут",
-                        labels={'PRICE_PER_SQFT': 'Цена за кв.фут ($)'},
-                        color_discrete_sequence=['#636EFA']
-                    )
-                    # Добавляем линию медианы
-                    fig.add_vline(
-                        x=median_price_sqft,
-                        line_dash="dash",
-                        line_color="red",
-                        annotation_text=f"Медиана: ${median_price_sqft:.0f}",
-                        annotation_position="top right"
-                    )
-                    # Ограничиваем ось X для лучшей визуализации
-                    fig.update_layout(xaxis_range=[0, min(2000, processed_df['PRICE_PER_SQFT'].max() * 1.1)])
-                    st.plotly_chart(fig, use_container_width=True)
-                
-                with col2:
-                    # График по округам с медианными значениями
-                    if 'BOROUGH' in processed_df.columns:
-                        # Создаем отображение для borough
-                        borough_map = {
-                            1: 'Manhattan',
-                            2: 'Brooklyn', 
-                            3: 'Queens',
-                            4: 'Bronx',
-                            5: 'Staten Island'
-                        }
-                        
-                        # Создаем колонку с названиями округов
-                        temp_df = processed_df.copy()
-                        temp_df['BOROUGH_NAME'] = temp_df['BOROUGH'].map(borough_map)
-                        
-                        # Группируем по округам и рассчитываем медиану
-                        borough_median = temp_df.groupby('BOROUGH_NAME')['PRICE_PER_SQFT'].median().sort_values(ascending=False)                                            
-                        
-                        # Создаем столбчатую диаграмму
-                        fig = px.bar(
-                            x=borough_median.index,
-                            y=borough_median.values,
-                            title='Медианная цена за кв.фут по округам',
-                            labels={'x': 'Округ', 'y': 'Цена за кв.фут ($)'},
-                            color=borough_median.values,
-                            color_continuous_scale='Viridis'
-                        )
-                        fig.update_layout(yaxis_tickformat='$,.0f')
-                        st.plotly_chart(fig, use_container_width=True)
 
-                        # Отображаем значения
-                        st.write("**Медианная цена за кв.фут по округам:**")
-                        for borough, price in borough_median.items():
-                            st.write(f"- {borough}: ${price:.2f}")
+        elif analysis_type == "Стоимость квадратного фута":
+                st.subheader("Анализ стоимости квадратного фута")
                 
-               
-            else:
-                st.warning("Нет данных о цене за квадратный фут. Проверьте наличие колонок 'SALE PRICE' и 'GROSS SQUARE FEET'.")
+                if 'PRICE_PER_SQFT' in filtered_df.columns and not filtered_df['PRICE_PER_SQFT'].isna().all():
+                    # Создаем копию для анализа
+                    analysis_df = filtered_df[filtered_df['PRICE_PER_SQFT'].notna()].copy()
+                    
+                    # Рассчитываем медианную цену за кв.фут
+                    median_price_sqft = analysis_df['PRICE_PER_SQFT'].median()
+                    
+                    # Определяем верхнюю границу для выбросов
+                    q3 = analysis_df['PRICE_PER_SQFT'].quantile(0.75)
+                    q1 = analysis_df['PRICE_PER_SQFT'].quantile(0.25)
+                    iqr = q3 - q1
+                    upper_bound = q3 + 1.5 * iqr
+                    
+                    # Ограничиваем максимальную реалистичную цену
+                    reasonable_max = 3000
+                    final_upper_bound = min(upper_bound, reasonable_max)
+                    
+                    # Заменяем аномально большие выбросы на медианную цену
+                    processed_df = analysis_df.copy()
+                    large_outliers_mask = processed_df['PRICE_PER_SQFT'] > final_upper_bound
+                    processed_df.loc[large_outliers_mask, 'PRICE_PER_SQFT'] = median_price_sqft
+                    
+                    # ТОЛЬКО ДВА ГРАФИКА
+                    col1, col2 = st.columns(2)
+                    
+                    with col1:
+                        # Гистограмма распределения
+                        fig = px.histogram(
+                            processed_df,
+                            x='PRICE_PER_SQFT',
+                            nbins=50,
+                            title="Распределение цены за кв.фут",
+                            labels={'PRICE_PER_SQFT': 'Цена за кв.фут ($)'},
+                            color_discrete_sequence=['#636EFA']
+                        )
+                        fig.add_vline(
+                            x=median_price_sqft,
+                            line_dash="dash",
+                            line_color="red",
+                            annotation_text=f"Медиана: ${median_price_sqft:.0f}"
+                        )
+                        fig.update_layout(
+                            xaxis_range=[0, 1500],
+                            xaxis_title="Цена за кв.фут ($)",
+                            yaxis_title="Количество объектов"
+                        )
+                        st.plotly_chart(fig, use_container_width=True)
+                    
+                    with col2:
+                        # График по округам
+                        if 'BOROUGH' in processed_df.columns:
+                            borough_map = {
+                                1: 'Manhattan',
+                                2: 'Brooklyn', 
+                                3: 'Queens',
+                                4: 'Bronx',
+                                5: 'Staten Island'
+                            }
+                            
+                            temp_df = processed_df.copy()
+                            temp_df['BOROUGH_NAME'] = temp_df['BOROUGH'].map(borough_map)
+                            
+                            # Группируем и рассчитываем медиану
+                            borough_stats = temp_df.groupby('BOROUGH_NAME')['PRICE_PER_SQFT'].agg(['median', 'count']).reset_index()
+                            borough_stats.columns = ['Округ', 'Медианная цена', 'Количество']
+                            borough_stats = borough_stats.sort_values('Медианная цена', ascending=False)
+                            
+                            # Создаем столбчатую диаграмму
+                            fig = px.bar(
+                                borough_stats,
+                                x='Округ',
+                                y='Медианная цена',
+                                title='Медианная цена за кв.фут по округам',
+                                labels={'Медианная цена': 'Цена за кв.фут ($)'},
+                                color='Медианная цена',
+                                color_continuous_scale='Viridis',
+                                text='Медианная цена'
+                            )
+                            # Форматируем текст на столбцах
+                            fig.update_traces(
+                                texttemplate='$%{text:.0f}',
+                                textposition='outside'
+                            )
+                            fig.update_layout(
+                                yaxis_tickformat='$,.0f',
+                                xaxis_title="Округ",
+                                yaxis_title="Цена за кв.фут ($)",
+                                yaxis_range=[0, max(borough_stats['Медианная цена']) * 1.2]
+                            )
+                            st.plotly_chart(fig, use_container_width=True)
+                else:
+                    st.warning("Нет данных о цене за квадратный фут.")
 # Страница 3: Прогнозные модели
 elif page == "Прогнозные модели":
     st.title("Прогнозные модели на основе данных")
