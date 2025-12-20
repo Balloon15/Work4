@@ -635,12 +635,7 @@ elif page == "Анализ рынка":
                         temp_df['BOROUGH_NAME'] = temp_df['BOROUGH'].map(borough_map)
                         
                         # Группируем по округам и рассчитываем медиану
-                        borough_median = temp_df.groupby('BOROUGH_NAME')['PRICE_PER_SQFT'].median().sort_values(ascending=False)
-                        
-                        # Отображаем значения
-                        st.write("**Медианная цена за кв.фут по округам:**")
-                        for borough, price in borough_median.items():
-                            st.write(f"- {borough}: ${price:.2f}")
+                        borough_median = temp_df.groupby('BOROUGH_NAME')['PRICE_PER_SQFT'].median().sort_values(ascending=False)                                            
                         
                         # Создаем столбчатую диаграмму
                         fig = px.bar(
@@ -653,6 +648,11 @@ elif page == "Анализ рынка":
                         )
                         fig.update_layout(yaxis_tickformat='$,.0f')
                         st.plotly_chart(fig, use_container_width=True)
+
+                        # Отображаем значения
+                        st.write("**Медианная цена за кв.фут по округам:**")
+                        for borough, price in borough_median.items():
+                            st.write(f"- {borough}: ${price:.2f}")
                 
                
             else:
