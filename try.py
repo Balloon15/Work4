@@ -651,7 +651,7 @@ elif page == "Анализ рынка":
                     fig.update_layout(yaxis_tickformat='$,.0f')
                     st.plotly_chart(fig, use_container_width=True)
 
-    elif analysis_type == "Возраст vs Цена":
+elif analysis_type == "Возраст vs Цена":
         st.subheader("Влияние возраста здания на цену")
         
         if 'BUILDING_AGE' in filtered_df.columns and 'SALE PRICE' in filtered_df.columns:
