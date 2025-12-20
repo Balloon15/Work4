@@ -97,7 +97,7 @@ def load_data():
             data = data[data['SALE PRICE'] > 0]
             
             # 2. Удаляем слишком низкие цены (< $10,000)
-            data = data[data['SALE PRICE'] >= 10000]
+            data = data[data['SALE PRICE'] >= 1000]
             
             # 3. Удаляем экстремально высокие цены (> $50 миллионов)
             data = data[data['SALE PRICE'] <= 50_000_000]
@@ -196,9 +196,9 @@ if 'YEAR BUILT' in df.columns:
         year_range = (1800, 2023)
 
 # Фильтр по цене
-price_range = (10000, 5000000)
+price_range = (1000, 5000000)
 if 'SALE PRICE' in df.columns:
-    realistic_min_price = int(max(df['SALE PRICE'].min(), 10000))
+    realistic_min_price = int(max(df['SALE PRICE'].min(), 1000))
     realistic_max_price = int(min(df['SALE PRICE'].max(), 5000000))
     
     price_range = st.sidebar.slider(
@@ -206,7 +206,7 @@ if 'SALE PRICE' in df.columns:
         min_value=realistic_min_price,
         max_value=realistic_max_price,
         value=(realistic_min_price, realistic_max_price),
-        step=10000
+        step=1000
     )
 
 # Применяем фильтры
