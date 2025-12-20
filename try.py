@@ -561,214 +561,168 @@ elif page == "Анализ рынка":
                 fig.update_xaxes(tickangle=45, tickfont=dict(size=10))
                 fig.update_layout(yaxis_tickformat='$,.0f')
                 st.plotly_chart(fig, use_container_width=True)
-        elif analysis_type == "Стоимость квадратного фута":
-            st.subheader("Анализ стоимости квадратного фута")
-    
-    if 'PRICE_PER_SQFT' in filtered_df.columns and not filtered_df['PRICE_PER_SQFT'].isna().all():
-        # Создаем копию для анализа
-        analysis_df = filtered_df.copy()
-        
-        # 1. Удаляем явные ошибки
-        analysis_df = analysis_df[analysis_df['PRICE_PER_SQFT'] > 1]  # Минимум $1 за кв.фут
-        
-        # 2. ОПРЕДЕЛЯЕМ И ОБРАБАТЫВАЕМ ВЫБРОСЫ
-        # Рассчитываем статистику
-        median_price_sqft = analysis_df['PRICE_PER_SQFT'].median()
-        q1 = analysis_df['PRICE_PER_SQFT'].quantile(0.25)
-        q3 = analysis_df['PRICE_PER_SQFT'].quantile(0.75)
-        iqr = q3 - q1
-        
-        # Определяем границы для выбросов (классический IQR метод)
-        lower_bound = max(1, q1 - 1.5 * iqr)  # Не меньше $1
-        upper_bound = q3 + 1.5 * iqr
-        
-        # Показываем статистику
-        with st.expander("Статистика по цене за кв.фут"):
-            col1, col2 = st.columns(2)
-            with col1:
-                st.write(f"**Медиана:** ${median_price_sqft:.2f}")
-                st.write(f"**Q1 (25%):** ${q1:.2f}")
-                st.write(f"**Q3 (75%):** ${q3:.2f}")
-                st.write(f"**IQR:** ${iqr:.2f}")
-            with col2:
-                st.write(f"**Нижняя граница:** ${lower_bound:.2f}")
-                st.write(f"**Верхняя граница:** ${upper_bound:.2f}")
-                st.write(f"**Мин. значение:** ${analysis_df['PRICE_PER_SQFT'].min():.2f}")
-                st.write(f"**Макс. значение:** ${analysis_df['PRICE_PER_SQFT'].max():.2f}")
-        
-        # 3. ДВА ПОДХОДА: 
-        # А) Удаление выбросов (для чистого распределения)
-        # Б) Замена выбросов медианой (сохраняем все записи)
-        
-        method = st.radio(
-            "Метод обработки выбросов:",
-            ["Удалить выбросы", "Заменить выбросы медианой"]
-        )
-        
-        if method == "Удалить выбросы":
-            # Фильтруем выбросы
-            clean_df = analysis_df[
-                (analysis_df['PRICE_PER_SQFT'] >= lower_bound) & 
-                (analysis_df['PRICE_PER_SQFT'] <= upper_bound)
-            ]
-            st.success(f"Удалено {len(analysis_df) - len(clean_df)} выбросов. Осталось {len(clean_df)} записей.")
-            processed_df = clean_df
-            
-        else:  # Заменить выбросы медианой
-            # Копируем данные
-            processed_df = analysis_df.copy()
-            
-            # Находим индексы выбросов
-            outliers_mask = (processed_df['PRICE_PER_SQFT'] < lower_bound) | (processed_df['PRICE_PER_SQFT'] > upper_bound)
-            n_outliers = outliers_mask.sum()
-            
-            # Заменяем выбросы медианной ценой
-            processed_df.loc[outliers_mask, 'PRICE_PER_SQFT'] = median_price_sqft
-            
-            st.success(f"Заменено {n_outliers} выбросов на медианную цену (${median_price_sqft:.2f} за кв.фут)")
-        
-        # 4. ВИЗУАЛИЗАЦИЯ ПОСЛЕ ОБРАБОТКИ
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            # Гистограмма распределения
-            fig = px.histogram(
-                processed_df,
-                x='PRICE_PER_SQFT',
-                nbins=50,
-                title="Распределение цены за кв.фут (после обработки)",
-                labels={'PRICE_PER_SQFT': 'Цена за кв.фут ($)'},
-                color_discrete_sequence=['#636EFA']
-            )
-            # Добавляем линию медианы
-            fig.add_vline(
-                x=processed_df['PRICE_PER_SQFT'].median(),
-                line_dash="dash",
-                line_color="red",
-                annotation_text=f"Медиана: ${processed_df['PRICE_PER_SQFT'].median():.0f}",
-                annotation_position="top right"
-            )
-            fig.update_layout(xaxis_range=[0, min(2000, processed_df['PRICE_PER_SQFT'].max() * 1.1)])
-            st.plotly_chart(fig, use_container_width=True)
-        
-        with col2:
-            # График по округам
-            if 'BOROUGH' in processed_df.columns:
-                # Создаем отображение для borough
-                borough_map = {
-                    1: 'Manhattan',
-                    2: 'Brooklyn', 
-                    3: 'Queens',
-                    4: 'Bronx',
-                    5: 'Staten Island'
-                }
                 
-                # Создаем временную колонку для группировки
+    elif analysis_type == "Стоимость квадратного фута":
+        st.subheader("Анализ стоимости квадратного фута")
+        
+        if 'PRICE_PER_SQFT' in filtered_df.columns and not filtered_df['PRICE_PER_SQFT'].isna().all():
+            # Создаем копию для анализа
+            analysis_df = filtered_df[filtered_df['PRICE_PER_SQFT'].notna()].copy()
+            
+            # Рассчитываем медианную цену за кв.фут
+            median_price_sqft = analysis_df['PRICE_PER_SQFT'].median()
+            
+            # Определяем верхнюю границу для выбросов (только большие значения)
+            # Используем IQR метод для определения верхней границы
+            q3 = analysis_df['PRICE_PER_SQFT'].quantile(0.75)
+            q1 = analysis_df['PRICE_PER_SQFT'].quantile(0.25)
+            iqr = q3 - q1
+            upper_bound = q3 + 1.5 * iqr
+            
+            # Дополнительно: устанавливаем абсолютную верхнюю границу
+            # Для Нью-Йорка разумная максимальная цена за кв.фут - $3000
+            reasonable_max = 3000
+            final_upper_bound = min(upper_bound, reasonable_max)
+            
+            # Находим аномально большие выбросы
+            large_outliers_mask = analysis_df['PRICE_PER_SQFT'] > final_upper_bound
+            n_large_outliers = large_outliers_mask.sum()
+            
+            # Заменяем только аномально большие выбросы на медианную цену
+            processed_df = analysis_df.copy()
+            processed_df.loc[large_outliers_mask, 'PRICE_PER_SQFT'] = median_price_sqft
+            
+            # Статистика обработки
+            with st.expander("Статистика обработки выбросов"):
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.write(f"**Медианная цена:** ${median_price_sqft:.2f}")
+                    st.write(f"**Q1 (25%):** ${q1:.2f}")
+                    st.write(f"**Q3 (75%):** ${q3:.2f}")
+                    st.write(f"**IQR:** ${iqr:.2f}")
+                with col2:
+                    st.write(f"**Верхняя граница (IQR):** ${upper_bound:.2f}")
+                    st.write(f"**Итоговая верхняя граница:** ${final_upper_bound:.2f}")
+                    st.write(f"**Большие выбросы заменены:** {n_large_outliers}")
+                    st.write(f"**Макс. цена после обработки:** ${processed_df['PRICE_PER_SQFT'].max():.2f}")
+            
+            if n_large_outliers > 0:
+                st.info(f"Заменено {n_large_outliers} аномально больших значений (>${final_upper_bound:.0f} за кв.фут) на медианную цену (${median_price_sqft:.2f})")
+            
+            # ВИЗУАЛИЗАЦИЯ
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                # Гистограмма распределения после обработки
+                fig = px.histogram(
+                    processed_df,
+                    x='PRICE_PER_SQFT',
+                    nbins=50,
+                    title="Распределение цены за кв.фут",
+                    labels={'PRICE_PER_SQFT': 'Цена за кв.фут ($)'},
+                    color_discrete_sequence=['#636EFA']
+                )
+                # Добавляем линию медианы
+                fig.add_vline(
+                    x=median_price_sqft,
+                    line_dash="dash",
+                    line_color="red",
+                    annotation_text=f"Медиана: ${median_price_sqft:.0f}",
+                    annotation_position="top right"
+                )
+                # Ограничиваем ось X для лучшей визуализации
+                fig.update_layout(xaxis_range=[0, min(2000, processed_df['PRICE_PER_SQFT'].max() * 1.1)])
+                st.plotly_chart(fig, use_container_width=True)
+            
+            with col2:
+                # График по округам с медианными значениями
+                if 'BOROUGH' in processed_df.columns:
+                    # Создаем отображение для borough
+                    borough_map = {
+                        1: 'Manhattan',
+                        2: 'Brooklyn', 
+                        3: 'Queens',
+                        4: 'Bronx',
+                        5: 'Staten Island'
+                    }
+                    
+                    # Создаем колонку с названиями округов
+                    temp_df = processed_df.copy()
+                    temp_df['BOROUGH_NAME'] = temp_df['BOROUGH'].map(borough_map)
+                    
+                    # Группируем по округам и рассчитываем медиану
+                    borough_median = temp_df.groupby('BOROUGH_NAME')['PRICE_PER_SQFT'].median().sort_values(ascending=False)
+                    
+                    # Отображаем значения
+                    st.write("**Медианная цена за кв.фут по округам:**")
+                    for borough, price in borough_median.items():
+                        st.write(f"- {borough}: ${price:.2f}")
+                    
+                    # Создаем столбчатую диаграмму
+                    fig = px.bar(
+                        x=borough_median.index,
+                        y=borough_median.values,
+                        title='Медианная цена за кв.фут по округам',
+                        labels={'x': 'Округ', 'y': 'Цена за кв.фут ($)'},
+                        color=borough_median.values,
+                        color_continuous_scale='Viridis'
+                    )
+                    fig.update_layout(yaxis_tickformat='$,.0f')
+                    st.plotly_chart(fig, use_container_width=True)
+            
+            # СРАВНИТЕЛЬНАЯ ИНФОРМАЦИЯ
+            st.markdown("---")
+            
+            # Реалистичные диапазоны для справки
+            st.write("**Справочно: типичные диапазоны цен за кв.фут в Нью-Йорке:**")
+            
+            typical_ranges = {
+                'Manhattan': {'min': 1000, 'max': 2500, 'color': 'green'},
+                'Brooklyn': {'min': 600, 'max': 1500, 'color': 'blue'},
+                'Queens': {'min': 400, 'max': 900, 'color': 'orange'},
+                'Bronx': {'min': 300, 'max': 600, 'color': 'red'},
+                'Staten Island': {'min': 350, 'max': 700, 'color': 'purple'}
+            }
+            
+            # Создаем сравнительную таблицу
+            if 'BOROUGH' in processed_df.columns:
+                comparison_data = []
                 temp_df = processed_df.copy()
                 temp_df['BOROUGH_NAME'] = temp_df['BOROUGH'].map(borough_map)
                 
-                # Группируем
-                borough_stats = temp_df.groupby('BOROUGH_NAME').agg({
-                    'PRICE_PER_SQFT': ['median', 'mean', 'count']
-                }).round(2)
+                for borough_name, ranges in typical_ranges.items():
+                    if borough_name in temp_df['BOROUGH_NAME'].unique():
+                        borough_data = temp_df[temp_df['BOROUGH_NAME'] == borough_name]
+                        actual_median = borough_data['PRICE_PER_SQFT'].median()
+                        
+                        comparison_data.append({
+                            'Округ': borough_name,
+                            'Факт. медиана ($)': actual_median,
+                            'Типичный минимум ($)': ranges['min'],
+                            'Типичный максимум ($)': ranges['max'],
+                            'В пределах типичного': ranges['min'] <= actual_median <= ranges['max']
+                        })
                 
-                borough_stats.columns = ['Медиана', 'Среднее', 'Количество']
-                borough_stats = borough_stats.sort_values('Медиана', ascending=False)
-                
-                # Отображаем таблицу
-                st.write("**Статистика по округам:**")
-                st.dataframe(
-                    borough_stats.style.format({
-                        'Медиана': '${:.2f}',
-                        'Среднее': '${:.2f}',
-                        'Количество': '{:.0f}'
-                    }),
-                    use_container_width=True
-                )
-                
-                # График
-                fig = px.bar(
-                    x=borough_stats.index,
-                    y=borough_stats['Медиана'],
-                    title='Медианная цена за кв.фут по округам',
-                    labels={'x': 'Округ', 'y': 'Цена за кв.фут ($)'},
-                    color=borough_stats['Медиана'],
-                    color_continuous_scale='Viridis'
-                )
-                fig.update_layout(yaxis_tickformat='$,.0f')
-                st.plotly_chart(fig, use_container_width=True)
-        
-        # 5. СРАВНИТЕЛЬНЫЙ АНАЛИЗ ДО/ПОСЛЕ
-        st.markdown("---")
-        st.subheader("Сравнительный анализ обработки выбросов")
-        
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            # Статистика до обработки
-            st.write("**Статистика до обработки:**")
-            before_stats = analysis_df['PRICE_PER_SQFT'].describe()
-            st.write(f"- Медиана: ${before_stats['50%']:.2f}")
-            st.write(f"- Среднее: ${before_stats['mean']:.2f}")
-            st.write(f"- Стандартное отклонение: ${before_stats['std']:.2f}")
-            st.write(f"- Минимум: ${before_stats['min']:.2f}")
-            st.write(f"- Максимум: ${before_stats['max']:.2f}")
-            st.write(f"- IQR: ${iqr:.2f}")
-        
-        with col2:
-            # Статистика после обработки
-            st.write("**Статистика после обработки:**")
-            after_stats = processed_df['PRICE_PER_SQFT'].describe()
-            st.write(f"- Медиана: ${after_stats['50%']:.2f}")
-            st.write(f"- Среднее: ${after_stats['mean']:.2f}")
-            st.write(f"- Стандартное отклонение: ${after_stats['std']:.2f}")
-            st.write(f"- Минимум: ${after_stats['min']:.2f}")
-            st.write(f"- Максимум: ${after_stats['max']:.2f}")
-            # Рассчитываем новый IQR
-            new_q1 = processed_df['PRICE_PER_SQFT'].quantile(0.25)
-            new_q3 = processed_df['PRICE_PER_SQFT'].quantile(0.75)
-            new_iqr = new_q3 - new_q1
-            st.write(f"- IQR: ${new_iqr:.2f}")
-        
-        # 6. РЕАЛИСТИЧНЫЕ ГРАНИЦЫ ДЛЯ НЬЮ-ЙОРКА
-        st.markdown("---")
-        st.subheader("Рекомендации по ценам за кв.фут в Нью-Йорке")
-        
-        # Реалистичные диапазоны для разных округов
-        realistic_ranges = {
-            'Manhattan': (800, 3000),
-            'Brooklyn': (500, 1500),
-            'Queens': (300, 900),
-            'Bronx': (200, 600),
-            'Staten Island': (250, 700)
-        }
-        
-        st.write("**Типичные диапазоны цен за кв.фут по округам:**")
-        for borough, (min_price, max_price) in realistic_ranges.items():
-            st.write(f"- **{borough}:** ${min_price:,} - ${max_price:,}")
-        
-        # Проверка реалистичности данных
-        if 'BOROUGH' in processed_df.columns:
-            st.write("**Проверка реалистичности данных:**")
-            temp_df = processed_df.copy()
-            temp_df['BOROUGH_NAME'] = temp_df['BOROUGH'].map(borough_map)
-            
-            for borough_name in realistic_ranges.keys():
-                if borough_name in temp_df['BOROUGH_NAME'].unique():
-                    borough_data = temp_df[temp_df['BOROUGH_NAME'] == borough_name]
-                    median_price = borough_data['PRICE_PER_SQFT'].median()
-                    min_realistic, max_realistic = realistic_ranges[borough_name]
+                if comparison_data:
+                    comparison_df = pd.DataFrame(comparison_data)
                     
-                    if median_price < min_realistic:
-                        st.warning(f"⚠️ {borough_name}: Медиана (${median_price:.0f}) ниже ожидаемого диапазона (${min_realistic}-${max_realistic})")
-                    elif median_price > max_realistic:
-                        st.warning(f"⚠️ {borough_name}: Медиана (${median_price:.0f}) выше ожидаемого диапазона (${min_realistic}-${max_realistic})")
-                    else:
-                        st.success(f"✓ {borough_name}: Медиана (${median_price:.0f}) в ожидаемом диапазоне")
-    
-    else:
-        st.warning("Нет данных о цене за квадратный фут.")
-
+                    # Добавляем стиль для визуализации
+                    def highlight_within_range(val):
+                        if isinstance(val, bool):
+                            return 'background-color: #90EE90' if val else 'background-color: #FFB6C1'
+                        return ''
+                    
+                    st.dataframe(
+                        comparison_df.style.format({
+                            'Факт. медиана ($)': '${:,.0f}',
+                            'Типичный минимум ($)': '${:,.0f}',
+                            'Типичный максимум ($)': '${:,.0f}'
+                        }).applymap(highlight_within_range, subset=['В пределах типичного']),
+                        use_container_width=True
+                    )
+        
+        else:
+            st.warning("Нет данных о цене за квадратный фут. Проверьте наличие колонок 'SALE PRICE' и 'GROSS SQUARE FEET'.")
 # Страница 3: Прогнозные модели
 elif page == "Прогнозные модели":
     st.title("Прогнозные модели на основе данных")
