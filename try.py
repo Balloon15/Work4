@@ -76,46 +76,37 @@ def reverse_translate_column(russian_name):
 def load_data():
     data = pd.read_csv("nyc-rolling-sales.csv")
     
-    numeric_columns = ['SALE PRICE', 'LAND SQUARE FEET', 'GROSS SQUARE FEET', 
-                       'YEAR BUILT', 'RESIDENTIAL UNITS', 'COMMERCIAL UNITS', 
-                       'TOTAL UNITS', 'ZIP CODE']
+    # 1. ВМЕСТО жесткого удаления < $10K → ВЕРИФИКАЦИЯ
+    def validate_price(price):
+        if price <= 0:
+            return np.nan  # Помечаем как пропуск
+        elif 0 < price < 1000:  # Слишком мало для любой недвижимости
+            return np.nan
+        elif 1000 <= price < 10000:  # Возможны гаражи/доли
+            # Проверяем тип недвижимости
+            if data['BUILDING CLASS CATEGORY'] in ['GARAGE', 'VACANT LAND']:
+                return price  # Оставляем
+            else:
+                return np.nan  # Для жилья - удаляем
+        else:
+            return price  # Нормальная цена
     
-    for col in numeric_columns:
-        if col in data.columns:
-            data[col] = pd.to_numeric(data[col].replace(' -  ', np.nan).replace(' - ', np.nan).replace(' -', np.nan), errors='coerce')
+    data['SALE PRICE'] = data['SALE PRICE'].apply(validate_price)
     
-    if 'SALE DATE' in data.columns:
-        data['SALE DATE'] = pd.to_datetime(data['SALE DATE'], errors='coerce')
+    # 2. ВМЕСТО IQR → Логарифмирование + разумные границы
+    data['LOG_PRICE'] = np.log1p(data['SALE PRICE'])
     
-    # ОЧИСТКА ВЫБРОСОВ В ЦЕНАХ
-    if 'SALE PRICE' in data.columns:
-        # 1. Удаляем нулевые и отрицательные цены
-        data = data[data['SALE PRICE'] > 0]
-        
-        # 2. Удаляем слишком низкие цены (< $10,000) - вероятно, опечатки
-        data = data[data['SALE PRICE'] >= 1000]
-        
-        # 3. Удаляем экстремально высокие цены (> $500 миллионов)
-        data = data[data['SALE PRICE'] <= 500_000_000]
-        
-        # 4. Статистическая очистка (IQR метод)
-        q1 = data['SALE PRICE'].quantile(0.25)
-        q3 = data['SALE PRICE'].quantile(0.75)
-        iqr = q3 - q1
-        upper_bound = q3 + 3 * iqr
-        data = data[data['SALE PRICE'] <= upper_bound]
+    # Удаляем только ЭКСТРЕМАЛЬНЫЕ выбросы (0.1% с обеих сторон)
+    lower_bound = data['LOG_PRICE'].quantile(0.001)
+    upper_bound = data['LOG_PRICE'].quantile(0.999)
+    data = data[(data['LOG_PRICE'] >= lower_bound) & 
+                (data['LOG_PRICE'] <= upper_bound)]
     
-    # Очистка года постройки - РЕАЛИСТИЧНЫЕ границы
-    if 'YEAR BUILT' in data.columns:
-        # Удаляем нереалистично старые годы (до 1700) и будущие годы
-        current_year = datetime.now().year
-        data = data[(data['YEAR BUILT'] >= 1700) & (data['YEAR BUILT'] <= current_year)]
-        # Удаляем нулевые и отрицательные значения
-        data = data[data['YEAR BUILT'] > 0]
-    
-    # Очистка площади
-    if 'GROSS SQUARE FEET' in data.columns:
-        data = data[(data['GROSS SQUARE FEET'] > 0) & (data['GROSS SQUARE FEET'] <= 1000000)]
+    # 3. ВМЕСТО удаления строк с пропусками → ИМПУТАЦИЯ
+    for col in ['GROSS SQUARE FEET', 'LAND SQUARE FEET']:
+        # Заполняем медианой по району и типу здания
+        data[col] = data.groupby(['BOROUGH', 'BUILDING CLASS CATEGORY'])[col]\
+                       .transform(lambda x: x.fillna(x.median()))
     
     return data
 
