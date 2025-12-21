@@ -937,7 +937,7 @@ elif page == "Прогнозные модели":
                         )
                         
                         # Обучаем модель
-                        st.write("**Обучение модели Random Forest...**")
+                        # st.write("**Обучение модели Random Forest...**")
                         try:
                             model = RandomForestRegressor(
                                 n_estimators=50,
@@ -956,13 +956,13 @@ elif page == "Прогнозные модели":
                             rmse = np.sqrt(mean_squared_error(y_test, y_pred))
                             r2 = r2_score(y_test, y_pred)
                             
-                            col1, col2, col3 = st.columns(3)
-                            with col1:
-                                st.metric("MAE", f"${mae:,.0f}")
-                            with col2:
-                                st.metric("RMSE", f"${rmse:,.0f}")
-                            with col3:
-                                st.metric("R²", f"{r2:.3f}")
+                            # col1, col2, col3 = st.columns(3)
+                            # with col1:
+                            #     st.metric("MAE", f"${mae:,.0f}")
+                            # with col2:
+                            #     st.metric("RMSE", f"${rmse:,.0f}")
+                            # with col3:
+                            #     st.metric("R²", f"{r2:.3f}")
                             
                             # Визуализация предсказаний
                             fig = go.Figure()
