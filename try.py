@@ -1217,28 +1217,32 @@ elif page == "Прогнозные модели":
                     # Характеристики по категориям
                     category_stats = classification_df.groupby('PRICE_CATEGORY').agg({
                         'SALE PRICE': ['median', 'min', 'max'],
-                        'GROSS SQUARE FEET': 'median',
-                        'YEAR BUILT': 'median',
-                        'TOTAL UNITS': 'median'
+                        'GROSS SQUARE FEET': 'median',  # Эта колонка будет использована для расчета
+                        'YEAR BUILT': 'median'
                     }).round(2)
                     
+                    # Правильное переименование колонок (5 колонок из агрегации)
                     category_stats.columns = ['Медианная цена', 'Минимальная цена', 'Максимальная цена',
-                                             'Медианный год постройки', "Цена за кв. фут"]
+                                             'Медианная площадь', 'Медианный год постройки']
                     
+                    # Теперь добавляем новую колонку "Цена за кв.фут" (используем медианную площадь для расчета)
                     category_stats['Цена за кв.фут'] = category_stats['Медианная цена'] / category_stats['Медианная площадь']
+                    
+                    # Убираем колонку "Медианная площадь", так как она не нужна в отображении
+                    category_stats_display = category_stats.drop(columns=['Медианная площадь'])
                     
                     st.write("**Характеристики по категориям:**")
                     st.dataframe(
-                        category_stats.style.format({
+                        category_stats_display.style.format({
                             'Медианная цена': '${:,.0f}',
                             'Минимальная цена': '${:,.0f}',
-                            'Максимальная цена': '${:,.0f}',                            
-                            'Медианный год постройки': '{:.0f}',                            
+                            'Максимальная цена': '${:,.0f}',
+                            'Медианный год постройки': '{:.0f}',
                             'Цена за кв.фут': '${:.2f}'
                         }),
                         use_container_width=True
                     )
-                
+                                
                 # Обучение модели классификации
                 st.markdown("---")
                 st.subheader("Модель классификации")
