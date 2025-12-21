@@ -481,13 +481,33 @@ elif page == "Анализ рынка":
             st.subheader("Сравнение районов")
             
             if 'NEIGHBORHOOD' in filtered_df.columns and 'SALE PRICE' in filtered_df.columns:
+                # Создаем mapping для округов
+                borough_map = {
+                    1: 'Manhattan',
+                    2: 'Brooklyn', 
+                    3: 'Queens',
+                    4: 'Bronx',
+                    5: 'Staten Island'
+                }
+                
+                # Добавляем информацию об округе в DataFrame
+                filtered_df['BOROUGH_NAME'] = filtered_df['BOROUGH'].map(borough_map)
+                
                 # Топ-15 районов по медианной цене
-                neighborhood_stats = filtered_df.groupby('NEIGHBORHOOD').agg({
+                neighborhood_stats = filtered_df.groupby(['NEIGHBORHOOD', 'BOROUGH_NAME']).agg({
                     'SALE PRICE': ['median', 'count'],
                     'GROSS SQUARE FEET': 'median'
                 }).round(2)
                 
+                # Упрощаем мультииндекс
                 neighborhood_stats.columns = ['Медианная цена', 'Количество продаж', 'Медианная площадь']
+                neighborhood_stats = neighborhood_stats.reset_index()
+                
+                # Добавляем колонку с районом и округом
+                neighborhood_stats['Район (Округ)'] = neighborhood_stats.apply(
+                    lambda x: f"{x['NEIGHBORHOOD']} ({x['BOROUGH_NAME']})", 
+                    axis=1
+                )
                 
                 # Добавляем цену за кв.фут (с проверкой деления на ноль)
                 neighborhood_stats['Цена за кв.фут'] = np.where(
@@ -504,30 +524,218 @@ elif page == "Анализ рынка":
                 
                 with col1:
                     fig = px.bar(
-                        top_neighborhoods.reset_index(),
-                        x='NEIGHBORHOOD',
+                        top_neighborhoods,
+                        x='Район (Округ)',
                         y='Медианная цена',
                         title='Топ-15 районов по медианной цене',
-                        color='Медианная цена'
+                        color='BOROUGH_NAME',
+                        color_discrete_map={
+                            'Manhattan': '#636EFA',
+                            'Brooklyn': '#EF553B',
+                            'Queens': '#00CC96',
+                            'Bronx': '#AB63FA',
+                            'Staten Island': '#FFA15A'
+                        },
+                        labels={
+                            'Район (Округ)': 'Район',
+                            'Медианная цена': 'Медианная цена ($)',
+                            'BOROUGH_NAME': 'Округ'
+                        }
                     )
-                    fig.update_xaxes(tickangle=45)
-                    fig.update_layout(yaxis_tickformat=',')
+                    fig.update_xaxes(tickangle=45, tickfont=dict(size=10))
+                    fig.update_layout(
+                        yaxis_tickformat=',',
+                        showlegend=True,
+                        legend_title_text='Округ'
+                    )
+                    
+                    # Добавляем аннотации с округом
+                    for i, row in enumerate(top_neighborhoods.itertuples()):
+                        fig.add_annotation(
+                            x=i,
+                            y=row._4,  # Медианная цена
+                            text=row.BOROUGH_NAME[:3],  # Сокращение округа (Man → Manhattan)
+                            showarrow=False,
+                            yshift=10,
+                            font=dict(size=8, color="black")
+                        )
+                    
                     st.plotly_chart(fig, use_container_width=True)
                 
                 with col2:
                     if len(neighborhood_stats) > 1:
+                        # Добавляем информацию об округе в scatter plot
                         fig = px.scatter(
-                            neighborhood_stats.reset_index(),
+                            neighborhood_stats,
                             x='Количество продаж',
                             y='Медианная цена',
                             size='Количество продаж',
-                            color='Цена за кв.фут',
-                            hover_name='NEIGHBORHOOD',
-                            title='Соотношение цены и количества продаж',
-                            size_max=40
+                            color='BOROUGH_NAME',
+                            hover_name='Район (Округ)',
+                            hover_data={
+                                'Количество продаж': True,
+                                'Медианная цена': '$,.0f',
+                                'Цена за кв.фут': '$,.2f',
+                                'BOROUGH_NAME': True
+                            },
+                            title='Соотношение цены и количества продаж по районам',
+                            size_max=40,
+                            labels={
+                                'Количество продаж': 'Количество продаж',
+                                'Медианная цена': 'Медианная цена ($)',
+                                'BOROUGH_NAME': 'Округ'
+                            }
                         )
-                        fig.update_layout(xaxis_tickformat=',', yaxis_tickformat=',')
+                        fig.update_layout(
+                            xaxis_tickformat=',',
+                            yaxis_tickformat=',',
+                            showlegend=True,
+                            legend_title_text='Округ'
+                        )
                         st.plotly_chart(fig, use_container_width=True)
+                
+                # Добавляем подробную таблицу с распределением по округам
+                st.markdown("---")
+                st.subheader("Подробная статистика по округам")
+                
+                # Анализ по округам
+                borough_analysis = filtered_df.groupby('BOROUGH_NAME').agg({
+                    'SALE PRICE': ['median', 'mean', 'count'],
+                    'GROSS SQUARE FEET': 'median',
+                    'NEIGHBORHOOD': 'nunique'
+                }).round(2)
+                
+                borough_analysis.columns = ['Медианная цена', 'Средняя цена', 'Количество продаж', 
+                                           'Медианная площадь', 'Количество районов']
+                
+                # Добавляем цену за кв.фут
+                borough_analysis['Цена за кв.фут'] = borough_analysis['Медианная цена'] / borough_analysis['Медианная площадь']
+                
+                # Сортируем по медианной цене
+                borough_analysis = borough_analysis.sort_values('Медианная цена', ascending=False)
+                
+                col1, col2 = st.columns([2, 1])
+                
+                with col1:
+                    st.write("**Статистика по округам:**")
+                    st.dataframe(
+                        borough_analysis.style.format({
+                            'Медианная цена': '${:,.0f}',
+                            'Средняя цена': '${:,.0f}',
+                            'Количество продаж': '{:,.0f}',
+                            'Медианная площадь': '{:,.0f}',
+                            'Количество районов': '{:.0f}',
+                            'Цена за кв.фут': '${:.2f}'
+                        }),
+                        use_container_width=True
+                    )
+                
+                with col2:
+                    # Круговая диаграмма распределения по округам
+                    fig = px.pie(
+                        values=borough_analysis['Количество продаж'],
+                        names=borough_analysis.index,
+                        title='Распределение продаж по округам',
+                        hole=0.3,
+                        color_discrete_sequence=px.colors.sequential.Viridis
+                    )
+                    st.plotly_chart(fig, use_container_width=True)
+                
+                # Добавляем фильтр по округу для детального анализа
+                st.markdown("---")
+                st.subheader("Детальный анализ районов по округам")
+                
+                selected_borough = st.selectbox(
+                    "Выберите округ для детального анализа:",
+                    ['Все'] + sorted(filtered_df['BOROUGH_NAME'].dropna().unique().tolist())
+                )
+                
+                if selected_borough != 'Все':
+                    borough_data = neighborhood_stats[neighborhood_stats['BOROUGH_NAME'] == selected_borough]
+                    
+                    if not borough_data.empty:
+                        st.write(f"**Топ-10 районов в {selected_borough} по медианной цене:**")
+                        
+                        top_borough_neighborhoods = borough_data.sort_values('Медианная цена', ascending=False).head(10)
+                        
+                        fig = px.bar(
+                            top_borough_neighborhoods,
+                            x='NEIGHBORHOOD',
+                            y='Медианная цена',
+                            title=f'Топ-10 районов в {selected_borough}',
+                            color='Медианная цена',
+                            color_continuous_scale='Viridis',
+                            labels={
+                                'NEIGHBORHOOD': 'Район',
+                                'Медианная цена': 'Медианная цена ($)'
+                            }
+                        )
+                        fig.update_xaxes(tickangle=45, tickfont=dict(size=10))
+                        fig.update_layout(yaxis_tickformat=',')
+                        st.plotly_chart(fig, use_container_width=True)
+# Страница 2: Анализ рынка
+# elif page == "Анализ рынка":
+#     st.title("Анализ рынка недвижимости Нью-Йорка")
+    
+#     if filtered_df.empty:
+#         st.warning("Нет данных для анализа.")
+#     else:
+#         analysis_type = st.selectbox(
+#             "Выберите тип анализа:",
+#             ["Анализ по районам", "Анализ по типам зданий", "Стоимость квадратного фута", "Возраст vs Цена"]
+#         )
+        
+#         if analysis_type == "Анализ по районам":
+#             st.subheader("Сравнение районов")
+            
+#             if 'NEIGHBORHOOD' in filtered_df.columns and 'SALE PRICE' in filtered_df.columns:
+#                 # Топ-15 районов по медианной цене
+#                 neighborhood_stats = filtered_df.groupby('NEIGHBORHOOD').agg({
+#                     'SALE PRICE': ['median', 'count'],
+#                     'GROSS SQUARE FEET': 'median'
+#                 }).round(2)
+                
+#                 neighborhood_stats.columns = ['Медианная цена', 'Количество продаж', 'Медианная площадь']
+                
+#                 # Добавляем цену за кв.фут (с проверкой деления на ноль)
+#                 neighborhood_stats['Цена за кв.фут'] = np.where(
+#                     neighborhood_stats['Медианная площадь'] > 0,
+#                     neighborhood_stats['Медианная цена'] / neighborhood_stats['Медианная площадь'],
+#                     np.nan
+#                 )
+#                 neighborhood_stats = neighborhood_stats.dropna(subset=['Цена за кв.фут'])
+                
+#                 # Сортируем по медианной цене
+#                 top_neighborhoods = neighborhood_stats.sort_values('Медианная цена', ascending=False).head(15)
+                
+#                 col1, col2 = st.columns(2)
+                
+#                 with col1:
+#                     fig = px.bar(
+#                         top_neighborhoods.reset_index(),
+#                         x='NEIGHBORHOOD',
+#                         y='Медианная цена',
+#                         title='Топ-15 районов по медианной цене',
+#                         color='Медианная цена'
+#                     )
+#                     fig.update_xaxes(tickangle=45)
+#                     fig.update_layout(yaxis_tickformat=',')
+#                     st.plotly_chart(fig, use_container_width=True)
+                
+#                 with col2:
+#                     if len(neighborhood_stats) > 1:
+#                         fig = px.scatter(
+#                             neighborhood_stats.reset_index(),
+#                             x='Количество продаж',
+#                             y='Медианная цена',
+#                             size='Количество продаж',
+#                             color='Цена за кв.фут',
+#                             hover_name='NEIGHBORHOOD',
+#                             title='Соотношение цены и количества продаж',
+#                             size_max=40
+#                         )
+#                         fig.update_layout(xaxis_tickformat=',', yaxis_tickformat=',')
+#                         st.plotly_chart(fig, use_container_width=True)
         elif analysis_type == "Анализ по типам зданий":
             st.subheader("Анализ по типам недвижимости")
             
