@@ -673,7 +673,7 @@ elif page == "Визуализация данных":
 #                         fig.update_xaxes(tickangle=45, tickfont=dict(size=10))
 #                         fig.update_layout(yaxis_tickformat=',')
 #                         st.plotly_chart(fig, use_container_width=True)
-Страница 2: Анализ рынка
+# Страница 2: Анализ рынка
 elif page == "Анализ рынка":
     st.title("Анализ рынка недвижимости Нью-Йорка")
     
