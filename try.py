@@ -594,71 +594,7 @@ elif page == "Анализ рынка":
                             color_discrete_sequence=px.colors.sequential.Viridis
                         )
                         st.plotly_chart(fig, use_container_width=True)
-                        
-                       
-# Страница 2: Анализ рынка
-# elif page == "Анализ рынка":
-#     st.title("Анализ рынка недвижимости Нью-Йорка")
-    
-#     if filtered_df.empty:
-#         st.warning("Нет данных для анализа.")
-#     else:
-#         analysis_type = st.selectbox(
-#             "Выберите тип анализа:",
-#             ["Анализ по районам", "Анализ по типам зданий", "Стоимость квадратного фута", "Возраст vs Цена"]
-#         )
-        
-#         if analysis_type == "Анализ по районам":
-#             st.subheader("Сравнение районов")
-            
-#             if 'NEIGHBORHOOD' in filtered_df.columns and 'SALE PRICE' in filtered_df.columns:
-#                 # Топ-15 районов по медианной цене
-#                 neighborhood_stats = filtered_df.groupby('NEIGHBORHOOD').agg({
-#                     'SALE PRICE': ['median', 'count'],
-#                     'GROSS SQUARE FEET': 'median'
-#                 }).round(2)
-                
-#                 neighborhood_stats.columns = ['Медианная цена', 'Количество продаж', 'Медианная площадь']
-                
-#                 # Добавляем цену за кв.фут (с проверкой деления на ноль)
-#                 neighborhood_stats['Цена за кв.фут'] = np.where(
-#                     neighborhood_stats['Медианная площадь'] > 0,
-#                     neighborhood_stats['Медианная цена'] / neighborhood_stats['Медианная площадь'],
-#                     np.nan
-#                 )
-#                 neighborhood_stats = neighborhood_stats.dropna(subset=['Цена за кв.фут'])
-                
-#                 # Сортируем по медианной цене
-#                 top_neighborhoods = neighborhood_stats.sort_values('Медианная цена', ascending=False).head(15)
-                
-#                 col1, col2 = st.columns(2)
-                
-#                 with col1:
-#                     fig = px.bar(
-#                         top_neighborhoods.reset_index(),
-#                         x='NEIGHBORHOOD',
-#                         y='Медианная цена',
-#                         title='Топ-15 районов по медианной цене',
-#                         color='Медианная цена'
-#                     )
-#                     fig.update_xaxes(tickangle=45)
-#                     fig.update_layout(yaxis_tickformat=',')
-#                     st.plotly_chart(fig, use_container_width=True)
-                
-#                 with col2:
-#                     if len(neighborhood_stats) > 1:
-#                         fig = px.scatter(
-#                             neighborhood_stats.reset_index(),
-#                             x='Количество продаж',
-#                             y='Медианная цена',
-#                             size='Количество продаж',
-#                             color='Цена за кв.фут',
-#                             hover_name='NEIGHBORHOOD',
-#                             title='Соотношение цены и количества продаж',
-#                             size_max=40
-#                         )
-#                         fig.update_layout(xaxis_tickformat=',', yaxis_tickformat=',')
-#                         st.plotly_chart(fig, use_container_width=True)
+                                        
         elif analysis_type == "Анализ по типам зданий":
             st.subheader("Анализ по типам недвижимости")
             
@@ -688,51 +624,6 @@ elif page == "Анализ рынка":
                 fig.update_layout(yaxis_title='Медианная цена ($)', yaxis_tickformat=',')
                 fig.update_xaxes(tickangle=45, tickfont=dict(size=10))               
                 st.plotly_chart(fig, use_container_width=True)
-
-                #         fig = px.bar(
-                #     top_buildings.reset_index(),
-                #     x='BUILDING CLASS CATEGORY',
-                #     y='Медианная цена',
-                #     title='Топ-10 самых дорогих типов недвижимости',
-                #     color='Медианная цена',
-                #     labels={'BUILDING CLASS CATEGORY': 'Тип здания'}
-                # )
-                # fig.update_xaxes(tickangle=45, tickfont=dict(size=10))
-                # fig.update_layout(yaxis_tickformat=',')
-                # st.plotly_chart(fig, use_container_width=True)
-        
-        # elif analysis_type == "Анализ по типам зданий":
-        #     st.subheader("Анализ по типам недвижимости")
-            
-        #     if 'BUILDING CLASS CATEGORY' in filtered_df.columns and 'SALE PRICE' in filtered_df.columns:
-        #         building_stats = filtered_df.groupby('BUILDING CLASS CATEGORY').agg({
-        #             'SALE PRICE': ['median', 'count'],
-        #             'GROSS SQUARE FEET': 'median'
-        #         }).round(2)
-                
-        #         building_stats.columns = ['Медианная цена', 'Количество продаж', 'Медианная площадь']
-                
-        #         # Добавляем цену за кв.фут
-        #         building_stats['Цена за кв.фут'] = np.where(
-        #             building_stats['Медианная площадь'] > 0,
-        #             building_stats['Медианная цена'] / building_stats['Медианная площадь'],
-        #             np.nan
-        #         )
-        #         building_stats = building_stats.dropna(subset=['Цена за кв.фут'])
-                
-        #         # Топ-10 типов по цене за кв.фут
-        #         top_buildings = building_stats.nlargest(10, 'Цена за кв.фут')
-                
-        #         fig = px.bar(
-        #             top_buildings.reset_index(),
-        #             x='BUILDING CLASS CATEGORY',
-        #             y='Цена за кв.фут',
-        #             title='Топ-10 самых дорогих типов недвижимости (цена за кв.фут)',
-        #             color='Цена за кв.фут'
-        #         )
-        #         fig.update_xaxes(tickangle=45, tickfont=dict(size=10))
-        #         fig.update_layout(yaxis_tickformat='$,.0f')
-        #         st.plotly_chart(fig, use_container_width=True)
 
         elif analysis_type == "Стоимость квадратного фута":
                 st.subheader("Анализ стоимости квадратного фута")
@@ -1118,148 +1009,6 @@ elif page == "Прогнозные модели":
                             except Exception as e:
                                 st.error(f"Ошибка при расчете прогноза: {str(e)}")
         
-
-
-        
- 
-        
-        
-
-        
-        # if model_type == "Прогноз цены на основе характеристик":
-        #     st.subheader("Прогноз цены на основе характеристик объекта")
-            
-        #     if len(filtered_df) < 100:
-        #         st.error("Слишком мало данных для построения модели.")
-        #     else:
-        #         # Подготовка данных для модели
-        #         # st.write("**Подготовка данных...**")
-                
-        #         # Выбираем релевантные признаки
-        #         features = []
-        #         if 'GROSS SQUARE FEET' in filtered_df.columns:
-        #             features.append('GROSS SQUARE FEET')
-        #         if 'BOROUGH' in filtered_df.columns:
-        #             features.append('BOROUGH')
-        #         if 'YEAR BUILT' in filtered_df.columns:
-        #             features.append('YEAR BUILT')
-        #         if 'TOTAL UNITS' in filtered_df.columns:
-        #             features.append('TOTAL UNITS')
-        #         if 'BUILDING CLASS CATEGORY' in filtered_df.columns:
-        #             features.append('BUILDING CLASS CATEGORY')
-        #         if 'LAND SQUARE FEET' in filtered_df.columns:
-        #             features.append('LAND SQUARE FEET')
-                
-        #         if len(features) < 3:
-        #             st.error("Недостаточно признаков для построения модели.")
-        #         else:
-        #             # Создаем копию данных для модели
-        #             model_df = filtered_df.copy()
-                    
-        #             # Удаляем пропуски
-        #             for feature in features + ['SALE PRICE']:
-        #                 if feature in model_df.columns:
-        #                     model_df = model_df.dropna(subset=[feature])
-                    
-        #             if len(model_df) < 50:
-        #                 st.error("Недостаточно данных после очистки пропусков.")
-        #             else:
-        #                 # Преобразуем категориальные переменные
-        #                 X = model_df[features].copy()
-        #                 y = model_df['SALE PRICE']
-                        
-        #                 # Кодируем категориальные переменные
-        #                 categorical_cols = X.select_dtypes(include=['object']).columns
-        #                 if len(categorical_cols) > 0:
-        #                     X = pd.get_dummies(X, columns=categorical_cols, drop_first=True)
-                        
-        #                 # Разделяем данные
-        #                 X_train, X_test, y_train, y_test = train_test_split(
-        #                     X, y, test_size=0.2, random_state=42
-        #                 )
-                        
-        #                 # Обучаем модель
-        #                 # st.write("**Обучение модели Random Forest...**")
-        #                 try:
-        #                     model = RandomForestRegressor(
-        #                         n_estimators=50,
-        #                         max_depth=10,
-        #                         random_state=42,
-        #                         n_jobs=-1
-        #                     )
-                            
-        #                     model.fit(X_train, y_train)
-                            
-        #                     # Прогноз и оценка
-        #                     y_pred = model.predict(X_test)
-                            
-        #                     # Метрики
-        #                     mae = mean_absolute_error(y_test, y_pred)
-        #                     rmse = np.sqrt(mean_squared_error(y_test, y_pred))
-        #                     r2 = r2_score(y_test, y_pred)
-                            
-        #                     # col1, col2, col3 = st.columns(3)
-        #                     # with col1:
-        #                     #     st.metric("MAE", f"${mae:,.0f}")
-        #                     # with col2:
-        #                     #     st.metric("RMSE", f"${rmse:,.0f}")
-        #                     # with col3:
-        #                     #     st.metric("R²", f"{r2:.3f}")
-                            
-        #                     # Визуализация предсказаний
-        #                     fig = go.Figure()
-                            
-        #                     n_points = min(100, len(y_test))
-        #                     fig.add_trace(go.Scatter(
-        #                         x=y_test.values[:n_points],
-        #                         y=y_pred[:n_points],
-        #                         mode='markers',
-        #                         name='Предсказания',
-        #                         marker=dict(size=8, opacity=0.6)
-        #                     ))
-                            
-        #                     max_val = max(y_test.max(), y_pred.max())
-        #                     min_val = min(y_test.min(), y_pred.min())
-        #                     fig.add_trace(go.Scatter(
-        #                         x=[min_val, max_val],
-        #                         y=[min_val, max_val],
-        #                         mode='lines',
-        #                         name='Идеальное предсказание',
-        #                         line=dict(color='red', dash='dash')
-        #                     ))
-                            
-        #                     fig.update_layout(
-        #                         title='Сравнение реальных и предсказанных цен',
-        #                         xaxis_title='Реальная цена ($)',
-        #                         yaxis_title='Предсказанная цена ($)',
-        #                         xaxis_tickformat=',',
-        #                         yaxis_tickformat=','
-        #                     )
-                            
-        #                     st.plotly_chart(fig, use_container_width=True)
-                            
-        #                     # Важность признаков
-        #                     st.subheader("Важность признаков")
-                            
-        #                     if hasattr(model, 'feature_importances_'):
-        #                         feature_importance = pd.DataFrame({
-        #                             'Признак': X.columns,
-        #                             'Важность': model.feature_importances_
-        #                         }).sort_values('Важность', ascending=False).head(15)
-                                
-        #                         fig = px.bar(
-        #                             feature_importance,
-        #                             x='Важность',
-        #                             y='Признак',
-        #                             orientation='h',
-        #                             title='Топ-15 важнейших признаков',
-        #                             color='Важность'
-        #                         )
-        #                         st.plotly_chart(fig, use_container_width=True)
-                            
-        #                 except Exception as e:
-        #                     st.error(f"Ошибка при обучении модели: {str(e)}")
-        
         # Модель 2: Анализ сезонности
         elif model_type == "Анализ сезонности":
             st.subheader("Анализ сезонных паттернов")
@@ -1483,10 +1232,8 @@ elif page == "Прогнозные модели":
                         category_stats.style.format({
                             'Медианная цена': '${:,.0f}',
                             'Минимальная цена': '${:,.0f}',
-                            'Максимальная цена': '${:,.0f}',
-                            'Медианная площадь': '{:,.0f}',
-                            'Медианный год постройки': '{:.0f}',
-                            'Медианное кол-во единиц': '{:.1f}',
+                            'Максимальная цена': '${:,.0f}',                            
+                            'Медианный год постройки': '{:.0f}',                            
                             'Цена за кв.фут': '${:.2f}'
                         }),
                         use_container_width=True
@@ -1544,17 +1291,7 @@ elif page == "Прогнозные модели":
                     accuracy = accuracy_score(y_test_class, y_pred_class)
                     precision = precision_score(y_test_class, y_pred_class, average='weighted')
                     recall = recall_score(y_test_class, y_pred_class, average='weighted')
-                    f1 = f1_score(y_test_class, y_pred_class, average='weighted')
-                    
-                    col1, col2, col3, col4 = st.columns(4)
-                    with col1:
-                        st.metric("Accuracy", f"{accuracy:.3f}")
-                    with col2:
-                        st.metric("Precision", f"{precision:.3f}")
-                    with col3:
-                        st.metric("Recall", f"{recall:.3f}")
-                    with col4:
-                        st.metric("F1-Score", f"{f1:.3f}")                            
+                    f1 = f1_score(y_test_class, y_pred_class, average='weighted')                                                    
                     
                     # Важность признаков для классификации
                     st.subheader("Важность признаков для классификации")
