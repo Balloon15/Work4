@@ -882,17 +882,19 @@ elif page == "Прогнозные модели":
             "Выберите модель:",
             ["Прогноз цены на основе характеристик", "Анализ сезонности", "Классификация по ценовым категориям"]
         )
+
+
         
-        # Модель 1: Прогноз цены на основе характеристик
+        # # Модель 1: Прогноз цены на основе характеристик
+
         if model_type == "Прогноз цены на основе характеристик":
-            st.subheader("Прогноз цены на основе характеристик объекта")
-            
-            if len(filtered_df) < 100:
-                st.error("Слишком мало данных для построения модели.")
-            else:
-                # Подготовка данных для модели
-                # st.write("**Подготовка данных...**")
-                
+        st.subheader("Прогноз цены на основе характеристик объекта")
+        
+        if len(filtered_df) < 100:
+            st.error("Слишком мало данных для построения модели. Необходимо минимум 100 записей.")
+        else:
+            # Подготовка данных для модели
+            with st.spinner("Подготовка данных для модели..."):
                 # Выбираем релевантные признаки
                 features = []
                 if 'GROSS SQUARE FEET' in filtered_df.columns:
@@ -907,116 +909,566 @@ elif page == "Прогнозные модели":
                     features.append('BUILDING CLASS CATEGORY')
                 if 'LAND SQUARE FEET' in filtered_df.columns:
                     features.append('LAND SQUARE FEET')
+                if 'NEIGHBORHOOD' in filtered_df.columns:
+                    features.append('NEIGHBORHOOD')
                 
                 if len(features) < 3:
                     st.error("Недостаточно признаков для построения модели.")
-                else:
-                    # Создаем копию данных для модели
-                    model_df = filtered_df.copy()
+                    st.stop()
+                
+                # Создаем копию данных для модели
+                model_df = filtered_df.copy()
+                
+                # Создаем производные признаки ДО удаления пропусков
+                if all(col in model_df.columns for col in ['SALE PRICE', 'GROSS SQUARE FEET', 'YEAR BUILT']):
+                    # Цена за кв.фут
+                    model_df['PRICE_PER_SQFT'] = model_df['SALE PRICE'] / model_df['GROSS SQUARE FEET']
+                    # Возраст здания
+                    model_df['BUILDING_AGE'] = 2024 - model_df['YEAR BUILT']
+                    # Добавляем производные признаки в features
+                    features.extend(['PRICE_PER_SQFT', 'BUILDING_AGE'])
+                
+                # Удаляем пропуски
+                initial_count = len(model_df)
+                for feature in features + ['SALE PRICE']:
+                    if feature in model_df.columns:
+                        model_df = model_df.dropna(subset=[feature])
+                
+                removed_count = initial_count - len(model_df)
+                if removed_count > 0:
+                    st.info(f"Удалено {removed_count} записей с пропущенными значениями. Осталось {len(model_df)} записей.")
+                
+                if len(model_df) < 100:
+                    st.error(f"Недостаточно данных после очистки пропусков ({len(model_df)} записей). Минимум 100.")
+                    st.stop()
+            
+            # Разделение данных
+            with st.spinner("Разделение данных на обучающую и тестовую выборки..."):
+                # Целевая переменная
+                y = model_df['SALE PRICE']
+                
+                # Признаки
+                X = model_df[features].copy()
+                
+                # Обработка категориальных переменных
+                categorical_cols = X.select_dtypes(include=['object']).columns.tolist()
+                
+                if categorical_cols:
+                    # Для NEIGHBORHOOD и BUILDING CLASS CATEGORY используем частотное кодирование
+                    for col in categorical_cols:
+                        if col in ['NEIGHBORHOOD', 'BUILDING CLASS CATEGORY']:
+                            # Частотное кодирование
+                            freq_encoding = X[col].value_counts(normalize=True)
+                            X[f'{col}_FREQ'] = X[col].map(freq_encoding)
+                        elif col == 'BOROUGH':
+                            # Для BOROUGH оставляем как есть (уже числовой после mapping)
+                            continue
                     
-                    # Удаляем пропуски
-                    for feature in features + ['SALE PRICE']:
-                        if feature in model_df.columns:
-                            model_df = model_df.dropna(subset=[feature])
+                    # Удаляем оригинальные категориальные колонки
+                    X = X.drop(columns=categorical_cols)
+                
+                # Заполняем оставшиеся пропуски медианой
+                X = X.fillna(X.median())
+                
+                # Разделяем данные
+                X_train, X_test, y_train, y_test = train_test_split(
+                    X, y, test_size=0.2, random_state=42, shuffle=True
+                )
+                
+                st.success(f"Данные подготовлены: {X_train.shape[0]} записей для обучения, {X_test.shape[0]} для тестирования")
+                st.write(f"Количество признаков: {X_train.shape[1]}")
+            
+            # Настройка и обучение модели
+            with st.spinner("Обучение модели Random Forest..."):
+                try:
+                    # Параметры модели
+                    model = RandomForestRegressor(
+                        n_estimators=100,      # Больше деревьев для лучшей стабильности
+                        max_depth=20,          # Глубже деревья
+                        min_samples_split=5,   # Минимум 5 образцов для разделения
+                        min_samples_leaf=2,    # Минимум 2 образца в листе
+                        max_features='sqrt',   # Квадратный корень от количества признаков
+                        bootstrap=True,
+                        random_state=42,
+                        n_jobs=-1,
+                        verbose=0
+                    )
                     
-                    if len(model_df) < 50:
-                        st.error("Недостаточно данных после очистки пропусков.")
-                    else:
-                        # Преобразуем категориальные переменные
-                        X = model_df[features].copy()
-                        y = model_df['SALE PRICE']
-                        
-                        # Кодируем категориальные переменные
-                        categorical_cols = X.select_dtypes(include=['object']).columns
-                        if len(categorical_cols) > 0:
-                            X = pd.get_dummies(X, columns=categorical_cols, drop_first=True)
-                        
-                        # Разделяем данные
-                        X_train, X_test, y_train, y_test = train_test_split(
-                            X, y, test_size=0.2, random_state=42
-                        )
-                        
-                        # Обучаем модель
-                        # st.write("**Обучение модели Random Forest...**")
+                    # Обучение
+                    model.fit(X_train, y_train)
+                    
+                    # Прогноз
+                    y_pred_train = model.predict(X_train)
+                    y_pred_test = model.predict(X_test)
+                    
+                    # Метрики
+                    train_mae = mean_absolute_error(y_train, y_pred_train)
+                    test_mae = mean_absolute_error(y_test, y_pred_test)
+                    train_rmse = np.sqrt(mean_squared_error(y_train, y_pred_train))
+                    test_rmse = np.sqrt(mean_squared_error(y_test, y_pred_test))
+                    train_r2 = r2_score(y_train, y_pred_train)
+                    test_r2 = r2_score(y_test, y_pred_test)
+                    
+                    # Отображение метрик
+                    st.success("Модель успешно обучена!")
+                    
+                    col1, col2, col3 = st.columns(3)
+                    with col1:
+                        st.metric("MAE (тест)", f"${test_mae:,.0f}", 
+                                 delta=f"${train_mae:,.0f} (трен)", 
+                                 delta_color="off")
+                    with col2:
+                        st.metric("RMSE (тест)", f"${test_rmse:,.0f}",
+                                 delta=f"${train_rmse:,.0f} (трен)",
+                                 delta_color="off")
+                    with col3:
+                        st.metric("R² (тест)", f"{test_r2:.3f}",
+                                 delta=f"{train_r2:.3f} (трен)",
+                                 delta_color="off")
+                    
+                    # Интерпретация метрик
+                    st.info(f"""
+                    **Интерпретация метрик:**
+                    - **MAE ${test_mae:,.0f}**: Средняя ошибка прогноза
+                    - **R² {test_r2:.3f}**: Модель объясняет {test_r2*100:.1f}% вариативности цен
+                    - **Разница трен/тест**: {abs(train_r2 - test_r2):.3f} (чем меньше, тем лучше)
+                    """)
+                    
+                except Exception as e:
+                    st.error(f"Ошибка при обучении модели: {str(e)}")
+                    st.stop()
+            
+            # Визуализация результатов
+            st.markdown("---")
+            st.subheader("Визуализация результатов")
+            
+            tab1, tab2, tab3 = st.tabs(["Предсказания vs Реальность", "Важность признаков", "Ошибки предсказания"])
+            
+            with tab1:
+                # График сравнения реальных и предсказанных цен
+                fig = go.Figure()
+                
+                # Используем все тестовые данные или максимум 500 для производительности
+                n_points = min(500, len(y_test))
+                indices = np.random.choice(len(y_test), n_points, replace=False)
+                
+                # Сортируем для лучшей визуализации
+                sort_idx = np.argsort(y_test.values[indices])
+                
+                fig.add_trace(go.Scatter(
+                    x=y_test.values[indices][sort_idx],
+                    y=y_pred_test[indices][sort_idx],
+                    mode='markers',
+                    name='Предсказания',
+                    marker=dict(
+                        size=8,
+                        opacity=0.6,
+                        color='blue'
+                    ),
+                    hovertemplate='<b>Реальная цена:</b> $%{x:,.0f}<br><b>Предсказанная:</b> $%{y:,.0f}<extra></extra>'
+                ))
+                
+                # Идеальная линия
+                max_val = max(y_test.max(), y_pred_test.max())
+                min_val = min(y_test.min(), y_pred_test.min())
+                
+                fig.add_trace(go.Scatter(
+                    x=[min_val, max_val],
+                    y=[min_val, max_val],
+                    mode='lines',
+                    name='Идеальное предсказание',
+                    line=dict(color='red', dash='dash', width=2)
+                ))
+                
+                # Линия тренда
+                z = np.polyfit(y_test.values[indices], y_pred_test[indices], 1)
+                p = np.poly1d(z)
+                trend_x = np.linspace(min_val, max_val, 100)
+                trend_y = p(trend_x)
+                
+                fig.add_trace(go.Scatter(
+                    x=trend_x,
+                    y=trend_y,
+                    mode='lines',
+                    name='Линия тренда',
+                    line=dict(color='green', width=2)
+                ))
+                
+                fig.update_layout(
+                    title='Сравнение реальных и предсказанных цен (тестовая выборка)',
+                    xaxis_title='Реальная цена ($)',
+                    yaxis_title='Предсказанная цена ($)',
+                    xaxis_tickformat=',',
+                    yaxis_tickformat=',',
+                    showlegend=True,
+                    hovermode='closest',
+                    height=500
+                )
+                
+                # Добавляем аннотации с метриками
+                fig.add_annotation(
+                    x=0.02, y=0.98,
+                    xref="paper", yref="paper",
+                    text=f"R² = {test_r2:.3f}<br>MAE = ${test_mae:,.0f}",
+                    showarrow=False,
+                    font=dict(size=12),
+                    bgcolor="white",
+                    bordercolor="black",
+                    borderwidth=1,
+                    borderpad=4
+                )
+                
+                st.plotly_chart(fig, use_container_width=True)
+                
+                # Анализ графика
+                st.info("""
+                **Анализ графика предсказаний:**
+                - **Хорошо**: Точки близко к красной диагональной линии
+                - **Очень хорошо**: Точки равномерно распределены вдоль линии
+                - **Проблема**: Точки группируются в вертикальные/горизонтальные линии
+                """)
+            
+            with tab2:
+                # Важность признаков
+                if hasattr(model, 'feature_importances_'):
+                    feature_importance = pd.DataFrame({
+                        'Признак': X.columns,
+                        'Важность': model.feature_importances_
+                    }).sort_values('Важность', ascending=False)
+                    
+                    # Топ-15 признаков
+                    top_features = feature_importance.head(15)
+                    
+                    fig = px.bar(
+                        top_features,
+                        x='Важность',
+                        y='Признак',
+                        orientation='h',
+                        title='Топ-15 важнейших признаков',
+                        color='Важность',
+                        color_continuous_scale='Viridis',
+                        labels={'Важность': 'Относительная важность', 'Признак': 'Название признака'}
+                    )
+                    
+                    fig.update_layout(
+                        xaxis_title='Важность (0-1)',
+                        yaxis_title='',
+                        height=500
+                    )
+                    
+                    st.plotly_chart(fig, use_container_width=True)
+                    
+                    # Таблица с важностью
+                    st.write("**Таблица важности признаков:**")
+                    st.dataframe(
+                        feature_importance.style.format({'Важность': '{:.4f}'}),
+                        use_container_width=True,
+                        height=300
+                    )
+                    
+                    # Интерпретация
+                    if not feature_importance.empty:
+                        top_feature = feature_importance.iloc[0]
+                        st.info(f"""
+                        **Интерпретация важности признаков:**
+                        - **Самый важный признак**: {top_feature['Признак']} ({top_feature['Важность']:.1%})
+                        - Первые 3 признака объясняют {feature_importance.head(3)['Важность'].sum():.1%} важности
+                        - Всего {len(feature_importance)} признаков в модели
+                        """)
+            
+            with tab3:
+                # Анализ ошибок
+                errors = y_test - y_pred_test
+                relative_errors = np.abs(errors / y_test) * 100
+                
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    # Распределение абсолютных ошибок
+                    fig1 = px.histogram(
+                        x=errors,
+                        nbins=50,
+                        title='Распределение ошибок предсказания ($)',
+                        labels={'x': 'Ошибка ($)', 'y': 'Количество'},
+                        color_discrete_sequence=['#FF6B6B']
+                    )
+                    fig1.add_vline(x=0, line_dash="dash", line_color="black")
+                    fig1.update_layout(xaxis_tickformat=',')
+                    st.plotly_chart(fig1, use_container_width=True)
+                
+                with col2:
+                    # Распределение относительных ошибок
+                    fig2 = px.histogram(
+                        x=relative_errors[relative_errors < 100],  # Фильтруем экстремальные значения
+                        nbins=50,
+                        title='Распределение относительных ошибок (%)',
+                        labels={'x': 'Относительная ошибка (%)', 'y': 'Количество'},
+                        color_discrete_sequence=['#4ECDC4']
+                    )
+                    fig2.add_vline(x=np.median(relative_errors), line_dash="dash", line_color="black",
+                                  annotation_text=f"Медиана: {np.median(relative_errors):.1f}%")
+                    st.plotly_chart(fig2, use_container_width=True)
+                
+                # Статистика ошибок
+                error_stats = pd.DataFrame({
+                    'Метрика': ['Средняя ошибка', 'Медианная ошибка', 'Std ошибок', 
+                               'Максимальная ошибка', 'Минимальная ошибка',
+                               'Средняя относительная ошибка', 'Медианная относительная ошибка'],
+                    'Значение': [
+                        f"${errors.mean():,.0f}",
+                        f"${errors.median():,.0f}",
+                        f"${errors.std():,.0f}",
+                        f"${errors.max():,.0f}",
+                        f"${errors.min():,.0f}",
+                        f"{relative_errors.mean():.1f}%",
+                        f"{np.median(relative_errors):.1f}%"
+                    ]
+                })
+                
+                st.write("**Статистика ошибок предсказания:**")
+                st.dataframe(error_stats, use_container_width=True, hide_index=True)
+            
+            # Интерпретация результатов
+            st.markdown("---")
+            st.subheader("Выводы и интерпретация")
+            
+            # Динамическая интерпретация на основе результатов
+            interpretation = []
+            
+            if test_r2 > 0.8:
+                interpretation.append("✅ **Отличная точность модели** - объясняет более 80% вариативности цен")
+            elif test_r2 > 0.6:
+                interpretation.append("✅ **Хорошая точность модели** - объясняет 60-80% вариативности цен")
+            elif test_r2 > 0.4:
+                interpretation.append("⚠️ **Удовлетворительная точность** - объясняет 40-60% вариативности цен")
+            else:
+                interpretation.append("❌ **Низкая точность модели** - требуется улучшение")
+            
+            if abs(train_r2 - test_r2) < 0.1:
+                interpretation.append("✅ **Модель не переобучена** - разница между обучением и тестом минимальна")
+            else:
+                interpretation.append("⚠️ **Возможное переобучение** - большая разница между обучением и тестом")
+            
+            if np.median(relative_errors) < 20:
+                interpretation.append("✅ **Приемлемая ошибка** - медианная ошибка менее 20%")
+            else:
+                interpretation.append("⚠️ **Высокая ошибка** - медианная ошибка более 20%")
+            
+            # Отображение интерпретации
+            for item in interpretation:
+                st.write(item)
+            
+            # Рекомендации по улучшению
+            if test_r2 < 0.6 or np.median(relative_errors) > 25:
+                st.warning("""
+                **Рекомендации по улучшению модели:**
+                1. Добавьте больше признаков (почтовый индекс, этажность и т.д.)
+                2. Увеличьте количество данных (снимите некоторые фильтры)
+                3. Попробуйте другие алгоритмы (Gradient Boosting, Neural Networks)
+                4. Добавьте временные признаки (месяц/год продажи)
+                5. Улучшите обработку категориальных переменных
+                """)
+            
+            # Интерактивный прогноз для пользователя
+            st.markdown("---")
+            st.subheader("Интерактивный прогноз")
+            
+            if st.checkbox("Показать форму для ручного ввода параметров"):
+                with st.form("prediction_form"):
+                    col1, col2 = st.columns(2)
+                    
+                    with col1:
+                        gross_sqft = st.number_input("Общая площадь (кв.фут)", min_value=100, max_value=100000, value=1000)
+                        borough = st.selectbox("Округ", options=[1, 2, 3, 4, 5], format_func=lambda x: {
+                            1: 'Manhattan', 2: 'Brooklyn', 3: 'Queens', 4: 'Bronx', 5: 'Staten Island'
+                        }[x])
+                        year_built = st.number_input("Год постройки", min_value=1700, max_value=2024, value=1980)
+                    
+                    with col2:
+                        total_units = st.number_input("Всего единиц", min_value=1, max_value=1000, value=1)
+                        land_sqft = st.number_input("Площадь земли (кв.фут)", min_value=100, max_value=1000000, value=2000)
+                        building_age = 2024 - year_built
+                        price_per_sqft = 500  # Примерное среднее значение
+                    
+                    submitted = st.form_submit_button("Рассчитать прогнозную цену")
+                    
+                    if submitted:
                         try:
-                            model = RandomForestRegressor(
-                                n_estimators=50,
-                                max_depth=10,
-                                random_state=42,
-                                n_jobs=-1
-                            )
+                            # Создаем DataFrame с введенными данными
+                            input_data = pd.DataFrame([{
+                                'GROSS SQUARE FEET': gross_sqft,
+                                'BOROUGH': borough,
+                                'YEAR BUILT': year_built,
+                                'TOTAL UNITS': total_units,
+                                'LAND SQUARE FEET': land_sqft,
+                                'BUILDING_AGE': building_age,
+                                'PRICE_PER_SQFT': price_per_sqft
+                            }])
                             
-                            model.fit(X_train, y_train)
+                            # Преобразуем как обучающие данные
+                            # Нужно добавить все колонки, которые есть в X
+                            for col in X.columns:
+                                if col not in input_data.columns:
+                                    input_data[col] = 0
                             
-                            # Прогноз и оценка
-                            y_pred = model.predict(X_test)
+                            # Упорядочиваем колонки как в X
+                            input_data = input_data[X.columns]
                             
-                            # Метрики
-                            mae = mean_absolute_error(y_test, y_pred)
-                            rmse = np.sqrt(mean_squared_error(y_test, y_pred))
-                            r2 = r2_score(y_test, y_pred)
+                            # Прогноз
+                            prediction = model.predict(input_data)[0]
                             
-                            # col1, col2, col3 = st.columns(3)
-                            # with col1:
-                            #     st.metric("MAE", f"${mae:,.0f}")
-                            # with col2:
-                            #     st.metric("RMSE", f"${rmse:,.0f}")
-                            # with col3:
-                            #     st.metric("R²", f"{r2:.3f}")
+                            # Доверительный интервал (упрощенный)
+                            confidence_low = prediction * 0.85
+                            confidence_high = prediction * 1.15
                             
-                            # Визуализация предсказаний
-                            fig = go.Figure()
+                            # Отображение результата
+                            st.success(f"**Прогнозная стоимость: ${prediction:,.0f}**")
+                            st.info(f"""
+                            **Диапазон вероятной стоимости:** ${confidence_low:,.0f} - ${confidence_high:,.0f}
                             
-                            n_points = min(100, len(y_test))
-                            fig.add_trace(go.Scatter(
-                                x=y_test.values[:n_points],
-                                y=y_pred[:n_points],
-                                mode='markers',
-                                name='Предсказания',
-                                marker=dict(size=8, opacity=0.6)
-                            ))
-                            
-                            max_val = max(y_test.max(), y_pred.max())
-                            min_val = min(y_test.min(), y_pred.min())
-                            fig.add_trace(go.Scatter(
-                                x=[min_val, max_val],
-                                y=[min_val, max_val],
-                                mode='lines',
-                                name='Идеальное предсказание',
-                                line=dict(color='red', dash='dash')
-                            ))
-                            
-                            fig.update_layout(
-                                title='Сравнение реальных и предсказанных цен',
-                                xaxis_title='Реальная цена ($)',
-                                yaxis_title='Предсказанная цена ($)',
-                                xaxis_tickformat=',',
-                                yaxis_tickformat=','
-                            )
-                            
-                            st.plotly_chart(fig, use_container_width=True)
-                            
-                            # Важность признаков
-                            st.subheader("Важность признаков")
-                            
-                            if hasattr(model, 'feature_importances_'):
-                                feature_importance = pd.DataFrame({
-                                    'Признак': X.columns,
-                                    'Важность': model.feature_importances_
-                                }).sort_values('Важность', ascending=False).head(15)
-                                
-                                fig = px.bar(
-                                    feature_importance,
-                                    x='Важность',
-                                    y='Признак',
-                                    orientation='h',
-                                    title='Топ-15 важнейших признаков',
-                                    color='Важность'
-                                )
-                                st.plotly_chart(fig, use_container_width=True)
+                            *Примечание: Это ориентировочная оценка. Фактическая цена может отличаться в зависимости от:
+                            - Состояния объекта
+                            - Внутренней отделки
+                            - Рыночных условий
+                            - Уникальных характеристик*
+                            """)
                             
                         except Exception as e:
-                            st.error(f"Ошибка при обучении модели: {str(e)}")
+                            st.error(f"Ошибка при расчете прогноза: {str(e)}")
+        
+        # if model_type == "Прогноз цены на основе характеристик":
+        #     st.subheader("Прогноз цены на основе характеристик объекта")
+            
+        #     if len(filtered_df) < 100:
+        #         st.error("Слишком мало данных для построения модели.")
+        #     else:
+        #         # Подготовка данных для модели
+        #         # st.write("**Подготовка данных...**")
+                
+        #         # Выбираем релевантные признаки
+        #         features = []
+        #         if 'GROSS SQUARE FEET' in filtered_df.columns:
+        #             features.append('GROSS SQUARE FEET')
+        #         if 'BOROUGH' in filtered_df.columns:
+        #             features.append('BOROUGH')
+        #         if 'YEAR BUILT' in filtered_df.columns:
+        #             features.append('YEAR BUILT')
+        #         if 'TOTAL UNITS' in filtered_df.columns:
+        #             features.append('TOTAL UNITS')
+        #         if 'BUILDING CLASS CATEGORY' in filtered_df.columns:
+        #             features.append('BUILDING CLASS CATEGORY')
+        #         if 'LAND SQUARE FEET' in filtered_df.columns:
+        #             features.append('LAND SQUARE FEET')
+                
+        #         if len(features) < 3:
+        #             st.error("Недостаточно признаков для построения модели.")
+        #         else:
+        #             # Создаем копию данных для модели
+        #             model_df = filtered_df.copy()
+                    
+        #             # Удаляем пропуски
+        #             for feature in features + ['SALE PRICE']:
+        #                 if feature in model_df.columns:
+        #                     model_df = model_df.dropna(subset=[feature])
+                    
+        #             if len(model_df) < 50:
+        #                 st.error("Недостаточно данных после очистки пропусков.")
+        #             else:
+        #                 # Преобразуем категориальные переменные
+        #                 X = model_df[features].copy()
+        #                 y = model_df['SALE PRICE']
+                        
+        #                 # Кодируем категориальные переменные
+        #                 categorical_cols = X.select_dtypes(include=['object']).columns
+        #                 if len(categorical_cols) > 0:
+        #                     X = pd.get_dummies(X, columns=categorical_cols, drop_first=True)
+                        
+        #                 # Разделяем данные
+        #                 X_train, X_test, y_train, y_test = train_test_split(
+        #                     X, y, test_size=0.2, random_state=42
+        #                 )
+                        
+        #                 # Обучаем модель
+        #                 # st.write("**Обучение модели Random Forest...**")
+        #                 try:
+        #                     model = RandomForestRegressor(
+        #                         n_estimators=50,
+        #                         max_depth=10,
+        #                         random_state=42,
+        #                         n_jobs=-1
+        #                     )
+                            
+        #                     model.fit(X_train, y_train)
+                            
+        #                     # Прогноз и оценка
+        #                     y_pred = model.predict(X_test)
+                            
+        #                     # Метрики
+        #                     mae = mean_absolute_error(y_test, y_pred)
+        #                     rmse = np.sqrt(mean_squared_error(y_test, y_pred))
+        #                     r2 = r2_score(y_test, y_pred)
+                            
+        #                     # col1, col2, col3 = st.columns(3)
+        #                     # with col1:
+        #                     #     st.metric("MAE", f"${mae:,.0f}")
+        #                     # with col2:
+        #                     #     st.metric("RMSE", f"${rmse:,.0f}")
+        #                     # with col3:
+        #                     #     st.metric("R²", f"{r2:.3f}")
+                            
+        #                     # Визуализация предсказаний
+        #                     fig = go.Figure()
+                            
+        #                     n_points = min(100, len(y_test))
+        #                     fig.add_trace(go.Scatter(
+        #                         x=y_test.values[:n_points],
+        #                         y=y_pred[:n_points],
+        #                         mode='markers',
+        #                         name='Предсказания',
+        #                         marker=dict(size=8, opacity=0.6)
+        #                     ))
+                            
+        #                     max_val = max(y_test.max(), y_pred.max())
+        #                     min_val = min(y_test.min(), y_pred.min())
+        #                     fig.add_trace(go.Scatter(
+        #                         x=[min_val, max_val],
+        #                         y=[min_val, max_val],
+        #                         mode='lines',
+        #                         name='Идеальное предсказание',
+        #                         line=dict(color='red', dash='dash')
+        #                     ))
+                            
+        #                     fig.update_layout(
+        #                         title='Сравнение реальных и предсказанных цен',
+        #                         xaxis_title='Реальная цена ($)',
+        #                         yaxis_title='Предсказанная цена ($)',
+        #                         xaxis_tickformat=',',
+        #                         yaxis_tickformat=','
+        #                     )
+                            
+        #                     st.plotly_chart(fig, use_container_width=True)
+                            
+        #                     # Важность признаков
+        #                     st.subheader("Важность признаков")
+                            
+        #                     if hasattr(model, 'feature_importances_'):
+        #                         feature_importance = pd.DataFrame({
+        #                             'Признак': X.columns,
+        #                             'Важность': model.feature_importances_
+        #                         }).sort_values('Важность', ascending=False).head(15)
+                                
+        #                         fig = px.bar(
+        #                             feature_importance,
+        #                             x='Важность',
+        #                             y='Признак',
+        #                             orientation='h',
+        #                             title='Топ-15 важнейших признаков',
+        #                             color='Важность'
+        #                         )
+        #                         st.plotly_chart(fig, use_container_width=True)
+                            
+        #                 except Exception as e:
+        #                     st.error(f"Ошибка при обучении модели: {str(e)}")
         
         # Модель 2: Анализ сезонности
         elif model_type == "Анализ сезонности":
