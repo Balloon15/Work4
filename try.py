@@ -528,39 +528,66 @@ elif page == "Анализ рынка":
                         )
                         fig.update_layout(xaxis_tickformat=',', yaxis_tickformat=',')
                         st.plotly_chart(fig, use_container_width=True)
-        
         elif analysis_type == "Анализ по типам зданий":
             st.subheader("Анализ по типам недвижимости")
             
-            if 'BUILDING CLASS CATEGORY' in filtered_df.columns and 'SALE PRICE' in filtered_df.columns:
+            if 'BUILDING CLASS CATEGORY' in filtered_df.columns:  # ← ИСПОЛЬЗУЙТЕ ЭТУ КОЛОНКУ!
                 building_stats = filtered_df.groupby('BUILDING CLASS CATEGORY').agg({
-                    'SALE PRICE': ['median', 'count'],
-                    'GROSS SQUARE FEET': 'median'
+                    'SALE PRICE': ['median', 'count', 'std'],
+                    'GROSS SQUARE FEET': 'median',
+                    'TOTAL UNITS': 'median'
                 }).round(2)
                 
-                building_stats.columns = ['Медианная цена', 'Количество продаж', 'Медианная площадь']
+                building_stats.columns = ['Медианная цена', 'Количество', 'Стд. отклонение', 
+                                          'Медианная площадь', 'Медианное кол-во единиц']
                 
-                # Добавляем цену за кв.фут
-                building_stats['Цена за кв.фут'] = np.where(
-                    building_stats['Медианная площадь'] > 0,
-                    building_stats['Медианная цена'] / building_stats['Медианная площадь'],
-                    np.nan
-                )
-                building_stats = building_stats.dropna(subset=['Цена за кв.фут'])
-                
-                # Топ-10 типов по цене за кв.фут
-                top_buildings = building_stats.nlargest(10, 'Цена за кв.фут')
+                # Топ-10 типов по цене
+                top_buildings = building_stats.nlargest(10, 'Медианная цена')
                 
                 fig = px.bar(
                     top_buildings.reset_index(),
                     x='BUILDING CLASS CATEGORY',
-                    y='Цена за кв.фут',
-                    title='Топ-10 самых дорогих типов недвижимости (цена за кв.фут)',
-                    color='Цена за кв.фут'
+                    y='Медианная цена',
+                    title='Топ-10 самых дорогих типов недвижимости',
+                    color='Медианная цена',
+                    labels={'BUILDING CLASS CATEGORY': 'Тип здания'}
                 )
                 fig.update_xaxes(tickangle=45, tickfont=dict(size=10))
-                fig.update_layout(yaxis_tickformat='$,.0f')
+                fig.update_layout(yaxis_tickformat=',')
                 st.plotly_chart(fig, use_container_width=True)
+        
+        # elif analysis_type == "Анализ по типам зданий":
+        #     st.subheader("Анализ по типам недвижимости")
+            
+        #     if 'BUILDING CLASS CATEGORY' in filtered_df.columns and 'SALE PRICE' in filtered_df.columns:
+        #         building_stats = filtered_df.groupby('BUILDING CLASS CATEGORY').agg({
+        #             'SALE PRICE': ['median', 'count'],
+        #             'GROSS SQUARE FEET': 'median'
+        #         }).round(2)
+                
+        #         building_stats.columns = ['Медианная цена', 'Количество продаж', 'Медианная площадь']
+                
+        #         # Добавляем цену за кв.фут
+        #         building_stats['Цена за кв.фут'] = np.where(
+        #             building_stats['Медианная площадь'] > 0,
+        #             building_stats['Медианная цена'] / building_stats['Медианная площадь'],
+        #             np.nan
+        #         )
+        #         building_stats = building_stats.dropna(subset=['Цена за кв.фут'])
+                
+        #         # Топ-10 типов по цене за кв.фут
+        #         top_buildings = building_stats.nlargest(10, 'Цена за кв.фут')
+                
+        #         fig = px.bar(
+        #             top_buildings.reset_index(),
+        #             x='BUILDING CLASS CATEGORY',
+        #             y='Цена за кв.фут',
+        #             title='Топ-10 самых дорогих типов недвижимости (цена за кв.фут)',
+        #             color='Цена за кв.фут'
+        #         )
+        #         fig.update_xaxes(tickangle=45, tickfont=dict(size=10))
+        #         fig.update_layout(yaxis_tickformat='$,.0f')
+        #         st.plotly_chart(fig, use_container_width=True)
 
         elif analysis_type == "Стоимость квадратного фута":
                 st.subheader("Анализ стоимости квадратного фута")
@@ -657,7 +684,7 @@ elif page == "Анализ рынка":
             if 'BUILDING_AGE' in filtered_df.columns and 'SALE PRICE' in filtered_df.columns:
                 # Группируем по возрастным категориям
                 age_bins = [0, 10, 25, 50, 100, 200, 500]
-                age_labels = ['0-10 лет', '11-25 лет', '26-50 лет', '51-100 лет', '101-200 лет', '200+ лет']
+                age_labels = ['0-10 лет', '11-25 лет', '26-50 лет', '51-80 лет', '80-100 лет', '100+ лет']
                 
                 filtered_df['AGE_CATEGORY'] = pd.cut(
                     filtered_df['BUILDING_AGE'],
