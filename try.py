@@ -543,18 +543,32 @@ elif page == "Анализ рынка":
                 
                 # Топ-10 типов по цене
                 top_buildings = building_stats.nlargest(10, 'Медианная цена')
+                                                
+                top_buildings = building_stats.nlargest(10, 'Медианная цена')  # ← Сортировка по медианной цене
                 
                 fig = px.bar(
                     top_buildings.reset_index(),
                     x='BUILDING CLASS CATEGORY',
-                    y='Медианная цена',
-                    title='Топ-10 самых дорогих типов недвижимости',
+                    y='Медианная цена',  # ← Используем медианную цену
+                    title='Топ-10 типов недвижимости по медианной цене продажи',
                     color='Медианная цена',
                     labels={'BUILDING CLASS CATEGORY': 'Тип здания'}
                 )
-                fig.update_xaxes(tickangle=45, tickfont=dict(size=10))
-                fig.update_layout(yaxis_tickformat=',')
+                fig.update_layout(yaxis_title='Медианная цена ($)', yaxis_tickformat=',')
+                fig.update_xaxes(tickangle=45, tickfont=dict(size=10))               
                 st.plotly_chart(fig, use_container_width=True)
+
+                #         fig = px.bar(
+                #     top_buildings.reset_index(),
+                #     x='BUILDING CLASS CATEGORY',
+                #     y='Медианная цена',
+                #     title='Топ-10 самых дорогих типов недвижимости',
+                #     color='Медианная цена',
+                #     labels={'BUILDING CLASS CATEGORY': 'Тип здания'}
+                # )
+                # fig.update_xaxes(tickangle=45, tickfont=dict(size=10))
+                # fig.update_layout(yaxis_tickformat=',')
+                # st.plotly_chart(fig, use_container_width=True)
         
         # elif analysis_type == "Анализ по типам зданий":
         #     st.subheader("Анализ по типам недвижимости")
