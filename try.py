@@ -946,7 +946,6 @@ elif page == "Прогнозные модели":
                         X, y, test_size=0.2, random_state=42
                     )
                     
-                    st.success(f"Данные подготовлены: {X_train.shape[0]} записей для обучения, {X_test.shape[0]} для тестирования")
                 
                 # Обучение модели
                 with st.spinner("Обучение модели Random Forest..."):
@@ -961,21 +960,7 @@ elif page == "Прогнозные модели":
                         model.fit(X_train, y_train)
                         
                         # Прогноз
-                        y_pred = model.predict(X_test)
-                        
-                        # Метрики
-                        mae = mean_absolute_error(y_test, y_pred)
-                        rmse = np.sqrt(mean_squared_error(y_test, y_pred))
-                        r2 = r2_score(y_test, y_pred)
-                        
-                        # Отображение метрик
-                        col1, col2, col3 = st.columns(3)
-                        with col1:
-                            st.metric("Средняя ошибка (MAE)", f"${mae:,.0f}")
-                        with col2:
-                            st.metric("Корень из MSE (RMSE)", f"${rmse:,.0f}")
-                        with col3:
-                            st.metric("Коэффициент детерминации (R²)", f"{r2:.3f}")
+                        y_pred = model.predict(X_test)                                              
                         
                     except Exception as e:
                         st.error(f"Ошибка при обучении модели: {str(e)}")
