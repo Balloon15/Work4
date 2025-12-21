@@ -595,31 +595,7 @@ elif page == "Анализ рынка":
                         )
                         st.plotly_chart(fig, use_container_width=True)
                         
-                        # Дополнительная круговая диаграмма: распределение по средней цене
-                        fig2 = px.pie(
-                            values=borough_stats['Средняя цена'] * borough_stats['Количество продаж'],
-                            names=borough_stats.index,
-                            title='Распределение стоимости по округам',
-                            hole=0.3,
-                            color_discrete_sequence=px.colors.sequential.Plasma
-                        )
-                        st.plotly_chart(fig2, use_container_width=True)
-                    
-                    # Быстрые метрики по округам
-                    st.markdown("---")
-                    st.subheader("Ключевые метрики по округам")
-                    
-                    cols = st.columns(5)
-                    borough_metrics = borough_stats.copy()
-                    
-                    for i, (borough_name, row) in enumerate(borough_metrics.iterrows()):
-                        with cols[i % 5]:
-                            st.metric(
-                                label=borough_name,
-                                value=f"${row['Медианная цена']:,.0f}",
-                                delta=f"{row['Количество продаж']:,.0f} продаж"
-                            )
-
+                       
 # Страница 2: Анализ рынка
 # elif page == "Анализ рынка":
 #     st.title("Анализ рынка недвижимости Нью-Йорка")
