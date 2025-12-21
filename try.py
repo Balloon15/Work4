@@ -1053,7 +1053,7 @@ elif page == "Прогнозные модели":
                     
                     st.plotly_chart(fig, use_container_width=True)
             
-                 st.markdown("---")
+                st.markdown("---")
                 st.subheader("Интерактивный прогноз")
                 
                 if st.checkbox("Показать форму для ручного ввода параметров"):
