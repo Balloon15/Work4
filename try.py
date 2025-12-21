@@ -1054,70 +1054,70 @@ elif page == "Прогнозные модели":
                     st.plotly_chart(fig, use_container_width=True)
             
                  st.markdown("---")
-        st.subheader("Интерактивный прогноз")
-        
-        if st.checkbox("Показать форму для ручного ввода параметров"):
-            with st.form("prediction_form"):
-                col1, col2 = st.columns(2)
+                st.subheader("Интерактивный прогноз")
                 
-                with col1:
-                    gross_sqft = st.number_input("Общая площадь (кв.фут)", min_value=100, max_value=100000, value=1000)
-                    borough = st.selectbox("Округ", options=[1, 2, 3, 4, 5], format_func=lambda x: {
-                        1: 'Manhattan', 2: 'Brooklyn', 3: 'Queens', 4: 'Bronx', 5: 'Staten Island'
-                    }[x])
-                    year_built = st.number_input("Год постройки", min_value=1700, max_value=2024, value=1980)
-                
-                with col2:
-                    total_units = st.number_input("Всего единиц", min_value=1, max_value=1000, value=1)
-                    land_sqft = st.number_input("Площадь земли (кв.фут)", min_value=100, max_value=1000000, value=2000)
-                    building_age = 2024 - year_built
-                    price_per_sqft = 500  # Примерное среднее значение
-                
-                submitted = st.form_submit_button("Рассчитать прогнозную цену")
-                
-                if submitted:
-                    try:
-                        # Создаем DataFrame с введенными данными
-                        input_data = pd.DataFrame([{
-                            'GROSS SQUARE FEET': gross_sqft,
-                            'BOROUGH': borough,
-                            'YEAR BUILT': year_built,
-                            'TOTAL UNITS': total_units,
-                            'LAND SQUARE FEET': land_sqft,
-                            'BUILDING_AGE': building_age,
-                            'PRICE_PER_SQFT': price_per_sqft
-                        }])
+                if st.checkbox("Показать форму для ручного ввода параметров"):
+                    with st.form("prediction_form"):
+                        col1, col2 = st.columns(2)
                         
-                        # Преобразуем как обучающие данные
-                        # Нужно добавить все колонки, которые есть в X
-                        for col in X.columns:
-                            if col not in input_data.columns:
-                                input_data[col] = 0
+                        with col1:
+                            gross_sqft = st.number_input("Общая площадь (кв.фут)", min_value=100, max_value=100000, value=1000)
+                            borough = st.selectbox("Округ", options=[1, 2, 3, 4, 5], format_func=lambda x: {
+                                1: 'Manhattan', 2: 'Brooklyn', 3: 'Queens', 4: 'Bronx', 5: 'Staten Island'
+                            }[x])
+                            year_built = st.number_input("Год постройки", min_value=1700, max_value=2024, value=1980)
                         
-                        # Упорядочиваем колонки как в X
-                        input_data = input_data[X.columns]
+                        with col2:
+                            total_units = st.number_input("Всего единиц", min_value=1, max_value=1000, value=1)
+                            land_sqft = st.number_input("Площадь земли (кв.фут)", min_value=100, max_value=1000000, value=2000)
+                            building_age = 2024 - year_built
+                            price_per_sqft = 500  # Примерное среднее значение
                         
-                        # Прогноз
-                        prediction = model.predict(input_data)[0]
+                        submitted = st.form_submit_button("Рассчитать прогнозную цену")
                         
-                        # Доверительный интервал (упрощенный)
-                        confidence_low = prediction * 0.85
-                        confidence_high = prediction * 1.15
-                        
-                        # Отображение результата
-                        st.success(f"**Прогнозная стоимость: ${prediction:,.0f}**")
-                        st.info(f"""
-                        **Диапазон вероятной стоимости:** ${confidence_low:,.0f} - ${confidence_high:,.0f}
-                        
-                        *Примечание: Это ориентировочная оценка. Фактическая цена может отличаться в зависимости от:
-                        - Состояния объекта
-                        - Внутренней отделки
-                        - Рыночных условий
-                        - Уникальных характеристик*
-                        """)
-                        
-                    except Exception as e:
-                        st.error(f"Ошибка при расчете прогноза: {str(e)}")
+                        if submitted:
+                            try:
+                                # Создаем DataFrame с введенными данными
+                                input_data = pd.DataFrame([{
+                                    'GROSS SQUARE FEET': gross_sqft,
+                                    'BOROUGH': borough,
+                                    'YEAR BUILT': year_built,
+                                    'TOTAL UNITS': total_units,
+                                    'LAND SQUARE FEET': land_sqft,
+                                    'BUILDING_AGE': building_age,
+                                    'PRICE_PER_SQFT': price_per_sqft
+                                }])
+                                
+                                # Преобразуем как обучающие данные
+                                # Нужно добавить все колонки, которые есть в X
+                                for col in X.columns:
+                                    if col not in input_data.columns:
+                                        input_data[col] = 0
+                                
+                                # Упорядочиваем колонки как в X
+                                input_data = input_data[X.columns]
+                                
+                                # Прогноз
+                                prediction = model.predict(input_data)[0]
+                                
+                                # Доверительный интервал (упрощенный)
+                                confidence_low = prediction * 0.85
+                                confidence_high = prediction * 1.15
+                                
+                                # Отображение результата
+                                st.success(f"**Прогнозная стоимость: ${prediction:,.0f}**")
+                                st.info(f"""
+                                **Диапазон вероятной стоимости:** ${confidence_low:,.0f} - ${confidence_high:,.0f}
+                                
+                                *Примечание: Это ориентировочная оценка. Фактическая цена может отличаться в зависимости от:
+                                - Состояния объекта
+                                - Внутренней отделки
+                                - Рыночных условий
+                                - Уникальных характеристик*
+                                """)
+                                
+                            except Exception as e:
+                                st.error(f"Ошибка при расчете прогноза: {str(e)}")
         
 
 
