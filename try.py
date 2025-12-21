@@ -946,6 +946,7 @@ elif page == "Прогнозные модели":
                         X, y, test_size=0.2, random_state=42
                     )
                     
+                    st.success(f"Данные подготовлены: {X_train.shape[0]} записей для обучения, {X_test.shape[0]} для тестирования")
                 
                 # Обучение модели
                 with st.spinner("Обучение модели Random Forest..."):
@@ -960,7 +961,21 @@ elif page == "Прогнозные модели":
                         model.fit(X_train, y_train)
                         
                         # Прогноз
-                        y_pred = model.predict(X_test)                                              
+                        y_pred = model.predict(X_test)
+                        
+                        # Метрики
+                        mae = mean_absolute_error(y_test, y_pred)
+                        rmse = np.sqrt(mean_squared_error(y_test, y_pred))
+                        r2 = r2_score(y_test, y_pred)
+                        
+                        # Отображение метрик
+                        col1, col2, col3 = st.columns(3)
+                        with col1:
+                            st.metric("Средняя ошибка (MAE)", f"${mae:,.0f}")
+                        with col2:
+                            st.metric("Корень из MSE (RMSE)", f"${rmse:,.0f}")
+                        with col3:
+                            st.metric("Коэффициент детерминации (R²)", f"{r2:.3f}")
                         
                     except Exception as e:
                         st.error(f"Ошибка при обучении модели: {str(e)}")
@@ -1016,6 +1031,22 @@ elif page == "Прогнозные модели":
                 
                 st.plotly_chart(fig, use_container_width=True)
                 
+                # Интерпретация графика
+                with st.expander("Как интерпретировать этот график?"):
+                    st.write("""
+                    **Интерпретация графика:**
+                    - **Идеально**: Все точки лежат на красной диагональной линии
+                    - **Хорошо**: Точки равномерно распределены вокруг линии
+                    - **Плохо**: Точки образуют вертикальные или горизонтальные линии
+                    
+                    **Ключевые моменты:**
+                    1. Точки выше линии - модель занижает цену
+                    2. Точки ниже линии - модель завышает цену
+                    3. Равномерное распределение - модель работает стабильно
+                    """)
+                
+                st.markdown("---")
+                
                 # Важность признаков
                 st.subheader("Важность признаков в модели")
                 
@@ -1052,72 +1083,334 @@ elif page == "Прогнозные модели":
                     )
                     
                     st.plotly_chart(fig, use_container_width=True)
-            
-                st.markdown("---")
-                st.subheader("Интерактивный прогноз")
+                    
+                    # Таблица с полным списком важности
+                    with st.expander("Показать полную таблицу важности признаков"):
+                        st.dataframe(
+                            feature_importance.style.format({'Важность': '{:.4f}'}),
+                            use_container_width=True,
+                            height=400
+                        )
+                    
+                    # Интерпретация важности признаков
+                    st.info(f"""
+                    **Интерпретация важности признаков:**
+                    
+                    1. **Самый важный признак**: **{top_features.iloc[0]['Признак']}** ({top_features.iloc[0]['Важность']:.1%})
+                    2. **Топ-3 признака** объясняют {top_features.head(3)['Важность'].sum():.1%} предсказательной способности модели
+                    3. **Топ-5 признаков** объясняют {top_features.head(5)['Важность'].sum():.1%} предсказательной способности модели
+                    
+                    **Что это означает на практике:**
+                    - Признаки с высокой важностью имеют наибольшее влияние на цену
+                    - Признаки с низкой важностью можно потенциально исключить из модели
+                    """)
+                    
+                    # Анализ наиболее важных признаков
+                    if not top_features.empty:
+                        st.write("**Анализ ключевых признаков:**")
+                        
+                        # Анализируем топ-3 признака
+                        for i in range(min(3, len(top_features))):
+                            feature_name = top_features.iloc[i]['Признак']
+                            importance = top_features.iloc[i]['Важность']
+                            
+                            if 'GROSS' in feature_name.upper() or 'SQUARE' in feature_name.upper():
+                                st.write(f"**{i+1}. {feature_name}** ({importance:.1%}) - Площадь объекта")
+                            elif 'BOROUGH' in feature_name.upper():
+                                st.write(f"**{i+1}. {feature_name}** ({importance:.1%}) - Городской округ")
+                            elif 'YEAR' in feature_name.upper() or 'BUILT' in feature_name.upper():
+                                st.write(f"**{i+1}. {feature_name}** ({importance:.1%}) - Год постройки/возраст")
+                            elif 'UNIT' in feature_name.upper():
+                                st.write(f"**{i+1}. {feature_name}** ({importance:.1%}) - Количество единиц")
+                            elif 'LAND' in feature_name.upper():
+                                st.write(f"**{i+1}. {feature_name}** ({importance:.1%}) - Площадь земли")
+                            elif 'CATEGORY' in feature_name.upper() or 'CLASS' in feature_name.upper():
+                                st.write(f"**{i+1}. {feature_name}** ({importance:.1%}) - Тип/категория здания")
+                            else:
+                                st.write(f"**{i+1}. {feature_name}** ({importance:.1%})")
                 
-                if st.checkbox("Показать форму для ручного ввода параметров"):
-                    with st.form("prediction_form"):
-                        col1, col2 = st.columns(2)
+                else:
+                    st.warning("Модель не поддерживает расчет важности признаков.")
+                
+                # Краткие выводы
+                st.markdown("---")
+                st.subheader("Ключевые выводы")
+                
+                conclusions = []
+                
+                # Выводы о точности модели
+                if r2 > 0.7:
+                    conclusions.append(f"✅ **Высокая точность модели**: R² = {r2:.3f} (модель объясняет {r2*100:.1f}% вариативности цен)")
+                elif r2 > 0.5:
+                    conclusions.append(f"⚠️ **Средняя точность модели**: R² = {r2:.3f} (модель объясняет {r2*100:.1f}% вариативности цен)")
+                else:
+                    conclusions.append(f"❌ **Низкая точность модели**: R² = {r2:.3f} (модель объясняет только {r2*100:.1f}% вариативности цен)")
+                
+                # Выводы о важности признаков
+                if hasattr(model, 'feature_importances_') and not top_features.empty:
+                    top_feature = top_features.iloc[0]['Признак']
+                    top_importance = top_features.iloc[0]['Важность']
+                    conclusions.append(f"📊 **Главный фактор цены**: {top_feature} ({top_importance:.1%} важности)")
+                    
+                    # Если есть несколько важных признаков
+                    if len(top_features) > 1:
+                        second_feature = top_features.iloc[1]['Признак']
+                        second_importance = top_features.iloc[1]['Важность']
+                        conclusions.append(f"📊 **Второй по важности**: {second_feature} ({second_importance:.1%} важности)")
+                
+                # Выводы об ошибке
+                if mae < 100000:
+                    conclusions.append(f"✅ **Низкая средняя ошибка**: ${mae:,.0f}")
+                elif mae < 250000:
+                    conclusions.append(f"⚠️ **Умеренная средняя ошибка**: ${mae:,.0f}")
+                else:
+                    conclusions.append(f"❌ **Высокая средняя ошибка**: ${mae:,.0f}")
+                
+                # Отображаем выводы
+                for conclusion in conclusions:
+                    st.write(conclusion)
+                
+                # Финальный комментарий
+                st.info("""
+                **Заключение:**
+                Эта модель помогает понять, какие факторы наиболее существенно влияют на стоимость недвижимости в Нью-Йорке.
+                Результаты могут использоваться для:
+                - Быстрой оценки объектов
+                - Понимания ключевых драйверов цены
+                - Выявления переоцененных/недооцененных объектов
+                """)
+        
+        # if model_type == "Прогноз цены на основе характеристик":
+        #     st.subheader("Прогноз цены на основе характеристик объекта")
+            
+        #     if len(filtered_df) < 100:
+        #         st.error("Слишком мало данных для построения модели. Необходимо минимум 100 записей.")
+        #     else:
+        #         # Подготовка данных для модели
+        #         with st.spinner("Подготовка данных для модели..."):
+        #             # Выбираем релевантные признаки
+        #             features = []
+        #             if 'GROSS SQUARE FEET' in filtered_df.columns:
+        #                 features.append('GROSS SQUARE FEET')
+        #             if 'BOROUGH' in filtered_df.columns:
+        #                 features.append('BOROUGH')
+        #             if 'YEAR BUILT' in filtered_df.columns:
+        #                 features.append('YEAR BUILT')
+        #             if 'TOTAL UNITS' in filtered_df.columns:
+        #                 features.append('TOTAL UNITS')
+        #             if 'BUILDING CLASS CATEGORY' in filtered_df.columns:
+        #                 features.append('BUILDING CLASS CATEGORY')
+        #             if 'LAND SQUARE FEET' in filtered_df.columns:
+        #                 features.append('LAND SQUARE FEET')
+                    
+        #             if len(features) < 3:
+        #                 st.error("Недостаточно признаков для построения модели.")
+        #                 st.stop()
+                    
+        #             # Создаем копию данных для модели
+        #             model_df = filtered_df.copy()
+                    
+        #             # Удаляем пропуски
+        #             for feature in features + ['SALE PRICE']:
+        #                 if feature in model_df.columns:
+        #                     model_df = model_df.dropna(subset=[feature])
+                    
+        #             if len(model_df) < 100:
+        #                 st.error(f"Недостаточно данных после очистки пропусков ({len(model_df)} записей).")
+        #                 st.stop()
+                
+        #         # Разделение данных
+        #         with st.spinner("Подготовка признаков..."):
+        #             # Целевая переменная
+        #             y = model_df['SALE PRICE']
+                    
+        #             # Признаки
+        #             X = model_df[features].copy()
+                    
+        #             # Обработка категориальных переменных
+        #             categorical_cols = X.select_dtypes(include=['object']).columns
+                    
+        #             if len(categorical_cols) > 0:
+        #                 # One-hot encoding для категориальных переменных
+        #                 X = pd.get_dummies(X, columns=categorical_cols, drop_first=True)
+                    
+        #             # Разделяем данные
+        #             X_train, X_test, y_train, y_test = train_test_split(
+        #                 X, y, test_size=0.2, random_state=42
+        #             )
+                    
+                
+        #         # Обучение модели
+        #         with st.spinner("Обучение модели Random Forest..."):
+        #             try:
+        #                 model = RandomForestRegressor(
+        #                     n_estimators=100,
+        #                     max_depth=20,
+        #                     random_state=42,
+        #                     n_jobs=-1
+        #                 )
                         
-                        with col1:
-                            gross_sqft = st.number_input("Общая площадь (кв.фут)", min_value=100, max_value=100000, value=1000)
-                            borough = st.selectbox("Округ", options=[1, 2, 3, 4, 5], format_func=lambda x: {
-                                1: 'Manhattan', 2: 'Brooklyn', 3: 'Queens', 4: 'Bronx', 5: 'Staten Island'
-                            }[x])
-                            year_built = st.number_input("Год постройки", min_value=1700, max_value=2024, value=1980)
+        #                 model.fit(X_train, y_train)
                         
-                        with col2:
-                            total_units = st.number_input("Всего единиц", min_value=1, max_value=1000, value=1)
-                            land_sqft = st.number_input("Площадь земли (кв.фут)", min_value=100, max_value=1000000, value=2000)
-                            building_age = 2024 - year_built
-                            price_per_sqft = 500  # Примерное среднее значение
+        #                 # Прогноз
+        #                 y_pred = model.predict(X_test)                                              
                         
-                        submitted = st.form_submit_button("Рассчитать прогнозную цену")
+        #             except Exception as e:
+        #                 st.error(f"Ошибка при обучении модели: {str(e)}")
+        #                 st.stop()
+                
+        #         st.markdown("---")
+                
+        #         # График сравнения реальных и предсказанных цен
+        #         st.subheader("Сравнение реальных и предсказанных цен")
+                
+        #         fig = go.Figure()
+                
+        #         # Ограничиваем количество точек для производительности
+        #         n_points = min(200, len(y_test))
+        #         indices = np.random.choice(len(y_test), n_points, replace=False)
+                
+        #         fig.add_trace(go.Scatter(
+        #             x=y_test.values[indices],
+        #             y=y_pred[indices],
+        #             mode='markers',
+        #             name='Предсказания',
+        #             marker=dict(
+        #                 size=10,
+        #                 opacity=0.6,
+        #                 color='blue',
+        #                 line=dict(width=1, color='DarkSlateGrey')
+        #             ),
+        #             hovertemplate='<b>Реальная цена:</b> $%{x:,.0f}<br><b>Предсказанная:</b> $%{y:,.0f}<extra></extra>'
+        #         ))
+                
+        #         # Идеальная линия
+        #         max_val = max(y_test.max(), y_pred.max())
+        #         min_val = min(y_test.min(), y_pred.min())
+                
+        #         fig.add_trace(go.Scatter(
+        #             x=[min_val, max_val],
+        #             y=[min_val, max_val],
+        #             mode='lines',
+        #             name='Идеальное предсказание',
+        #             line=dict(color='red', dash='dash', width=2)
+        #         ))
+                
+        #         fig.update_layout(
+        #             title='Сравнение реальных и предсказанных цен',
+        #             xaxis_title='Реальная цена ($)',
+        #             yaxis_title='Предсказанная цена ($)',
+        #             xaxis_tickformat=',',
+        #             yaxis_tickformat=',',
+        #             showlegend=True,
+        #             hovermode='closest',
+        #             height=500
+        #         )
+                
+        #         st.plotly_chart(fig, use_container_width=True)
+                
+        #         # Важность признаков
+        #         st.subheader("Важность признаков в модели")
+                
+        #         if hasattr(model, 'feature_importances_'):
+        #             # Получаем важность признаков
+        #             feature_importance = pd.DataFrame({
+        #                 'Признак': X.columns,
+        #                 'Важность': model.feature_importances_
+        #             }).sort_values('Важность', ascending=False)
+                    
+        #             # Ограничиваем до топ-15 для наглядности
+        #             top_features = feature_importance.head(15)
+                    
+        #             # График важности признаков
+        #             fig = px.bar(
+        #                 top_features,
+        #                 x='Важность',
+        #                 y='Признак',
+        #                 orientation='h',
+        #                 title='Топ-15 важнейших признаков для предсказания цены',
+        #                 color='Важность',
+        #                 color_continuous_scale='Viridis',
+        #                 labels={
+        #                     'Важность': 'Относительная важность',
+        #                     'Признак': 'Название признака'
+        #                 }
+        #             )
+                    
+        #             fig.update_layout(
+        #                 xaxis_title='Важность (0-1)',
+        #                 yaxis_title='',
+        #                 height=500,
+        #                 showlegend=False
+        #             )
+                    
+        #             st.plotly_chart(fig, use_container_width=True)
+            
+        #         st.markdown("---")
+        #         st.subheader("Интерактивный прогноз")
+                
+        #         if st.checkbox("Показать форму для ручного ввода параметров"):
+        #             with st.form("prediction_form"):
+        #                 col1, col2 = st.columns(2)
                         
-                        if submitted:
-                            try:
-                                # Создаем DataFrame с введенными данными
-                                input_data = pd.DataFrame([{
-                                    'GROSS SQUARE FEET': gross_sqft,
-                                    'BOROUGH': borough,
-                                    'YEAR BUILT': year_built,
-                                    'TOTAL UNITS': total_units,
-                                    'LAND SQUARE FEET': land_sqft,
-                                    'BUILDING_AGE': building_age,
-                                    'PRICE_PER_SQFT': price_per_sqft
-                                }])
+        #                 with col1:
+        #                     gross_sqft = st.number_input("Общая площадь (кв.фут)", min_value=100, max_value=100000, value=1000)
+        #                     borough = st.selectbox("Округ", options=[1, 2, 3, 4, 5], format_func=lambda x: {
+        #                         1: 'Manhattan', 2: 'Brooklyn', 3: 'Queens', 4: 'Bronx', 5: 'Staten Island'
+        #                     }[x])
+        #                     year_built = st.number_input("Год постройки", min_value=1700, max_value=2024, value=1980)
+                        
+        #                 with col2:
+        #                     total_units = st.number_input("Всего единиц", min_value=1, max_value=1000, value=1)
+        #                     land_sqft = st.number_input("Площадь земли (кв.фут)", min_value=100, max_value=1000000, value=2000)
+        #                     building_age = 2024 - year_built
+        #                     price_per_sqft = 500  # Примерное среднее значение
+                        
+        #                 submitted = st.form_submit_button("Рассчитать прогнозную цену")
+                        
+        #                 if submitted:
+        #                     try:
+        #                         # Создаем DataFrame с введенными данными
+        #                         input_data = pd.DataFrame([{
+        #                             'GROSS SQUARE FEET': gross_sqft,
+        #                             'BOROUGH': borough,
+        #                             'YEAR BUILT': year_built,
+        #                             'TOTAL UNITS': total_units,
+        #                             'LAND SQUARE FEET': land_sqft,
+        #                             'BUILDING_AGE': building_age,
+        #                             'PRICE_PER_SQFT': price_per_sqft
+        #                         }])
                                 
-                                # Преобразуем как обучающие данные
-                                # Нужно добавить все колонки, которые есть в X
-                                for col in X.columns:
-                                    if col not in input_data.columns:
-                                        input_data[col] = 0
+        #                         # Преобразуем как обучающие данные
+        #                         # Нужно добавить все колонки, которые есть в X
+        #                         for col in X.columns:
+        #                             if col not in input_data.columns:
+        #                                 input_data[col] = 0
                                 
-                                # Упорядочиваем колонки как в X
-                                input_data = input_data[X.columns]
+        #                         # Упорядочиваем колонки как в X
+        #                         input_data = input_data[X.columns]
                                 
-                                # Прогноз
-                                prediction = model.predict(input_data)[0]
+        #                         # Прогноз
+        #                         prediction = model.predict(input_data)[0]
                                 
-                                # Доверительный интервал (упрощенный)
-                                confidence_low = prediction * 0.85
-                                confidence_high = prediction * 1.15
+        #                         # Доверительный интервал (упрощенный)
+        #                         confidence_low = prediction * 0.85
+        #                         confidence_high = prediction * 1.15
                                 
-                                # Отображение результата
-                                st.success(f"**Прогнозная стоимость: ${prediction:,.0f}**")
-                                st.info(f"""
-                                **Диапазон вероятной стоимости:** ${confidence_low:,.0f} - ${confidence_high:,.0f}
+        #                         # Отображение результата
+        #                         st.success(f"**Прогнозная стоимость: ${prediction:,.0f}**")
+        #                         st.info(f"""
+        #                         **Диапазон вероятной стоимости:** ${confidence_low:,.0f} - ${confidence_high:,.0f}
                                 
-                                *Примечание: Это ориентировочная оценка. Фактическая цена может отличаться в зависимости от:
-                                - Состояния объекта
-                                - Внутренней отделки
-                                - Рыночных условий
-                                - Уникальных характеристик*
-                                """)
+        #                         *Примечание: Это ориентировочная оценка. Фактическая цена может отличаться в зависимости от:
+        #                         - Состояния объекта
+        #                         - Внутренней отделки
+        #                         - Рыночных условий
+        #                         - Уникальных характеристик*
+        #                         """)
                                 
-                            except Exception as e:
-                                st.error(f"Ошибка при расчете прогноза: {str(e)}")
+        #                     except Exception as e:
+        #                         st.error(f"Ошибка при расчете прогноза: {str(e)}")
         
 
 
